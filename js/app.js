@@ -253,6 +253,7 @@ function hookUI() {
     if (!a) return;
     closeMenu();
     if (a === 'export') return doExport();
+    if (a === 'export-csv') return doExportCsv();
     if (a === 'import') return triggerImport();
     if (a === 'bulk-import') return openBulkDialog();
     if (a === 'copy-emails') return copyEmailsOfFiltered();
@@ -802,7 +803,35 @@ async function doExport() {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
-  toast('Export téléchargé.', { type: 'ok' });
+  toast('Export téléchargé (avec images).', { type: 'ok' });
+}
+
+async function doExportCsv() {
+  const profiles = STATE.profiles;
+  if (!profiles.length) { toast('Aucun profil à exporter.', { type: 'warn' }); return; }
+  const cols = ['name', 'profession', 'instagram', 'phone', 'email', 'website', 'location', 'tags', 'status', 'notes', 'createdAt', 'updatedAt'];
+  const escapeCsv = (v) => {
+    if (v == null) return '';
+    const s = Array.isArray(v) ? v.join(', ') : String(v);
+    if (/[",\n;]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  };
+  const rows = [cols.join(',')];
+  for (const p of profiles) {
+    rows.push(cols.map(c => escapeCsv(p[c])).join(','));
+  }
+  const csv = '﻿' + rows.join('\n'); // BOM for Excel
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `trombinoscope_${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  toast(`CSV exporté (${profiles.length} profils).`, { type: 'ok' });
 }
 
 function triggerImport() {
@@ -1083,14 +1112,19 @@ function showContextMenu(profileId, x, y) {
     m.appendChild(b);
   }
   m.hidden = false;
-  // position smart
-  const w = 220, h = m.offsetHeight || 380;
-  const px = Math.min(x, window.innerWidth - w - 8);
-  const py = Math.min(y, window.innerHeight - h - 8);
+  // position smart : mesurer après reveal, flip si dépasse
+  m.style.left = '0px'; m.style.top = '0px';
+  const rect = m.getBoundingClientRect();
+  const w = rect.width || 220;
+  const h = rect.height || 320;
+  let px = x;
+  let py = y;
+  if (px + w > window.innerWidth - 8) px = Math.max(8, x - w);
+  if (py + h > window.innerHeight - 8) py = Math.max(8, y - h);
   m.style.left = px + 'px';
   m.style.top = py + 'px';
   m.style.right = 'auto';
-  requestAnimationFrame(() => m.classList.add('is-open'));
+  setTimeout(() => m.classList.add('is-open'), 16);
 
   m.onclick = async (e) => {
     const act = e.target.closest('[data-action]')?.dataset.action;
