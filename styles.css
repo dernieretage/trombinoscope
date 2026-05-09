@@ -1071,6 +1071,30 @@ dialog[open] .dialog__inner {
 .toast__close:hover { background: var(--bg-elev-2); color: var(--text); }
 .toast__close svg { width: 12px; height: 12px; }
 
+/* ---- Back to top ---- */
+.totop {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--bg-elev);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  box-shadow: var(--shadow-md);
+  z-index: 90;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity var(--t-mid) var(--ease), transform var(--t-mid) var(--ease), background var(--t-fast) var(--ease);
+}
+.totop.is-show { opacity: 1; transform: translateY(0); }
+.totop:hover { background: var(--accent); color: var(--accent-ink); }
+.totop svg { width: 20px; height: 20px; }
+@media (max-width: 480px) { .totop { right: 16px; bottom: 16px; } }
+
 /* ---- Footer ---- */
 .footer {
   position: relative; z-index: 1;

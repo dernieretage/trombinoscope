@@ -235,9 +235,8 @@ function hookUI() {
     });
   });
 
-  // add buttons
+  // add buttons (le empty-add est rebindé selon le contexte dans render())
   $('#add-btn').addEventListener('click', () => openEditDialog());
-  $('#empty-add').addEventListener('click', () => openEditDialog());
 
   // menu
   const menuBtn = $('#menu-toggle');
@@ -317,6 +316,24 @@ function hookUI() {
 
   // paste images globally (when not typing in a non-image field)
   document.addEventListener('paste', onPaste);
+
+  // back-to-top
+  const totop = $('#totop');
+  totop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  let totopShown = false;
+  window.addEventListener('scroll', () => {
+    const should = window.scrollY > 400;
+    if (should !== totopShown) {
+      totopShown = should;
+      if (should) {
+        totop.hidden = false;
+        setTimeout(() => totop.classList.add('is-show'), 16);
+      } else {
+        totop.classList.remove('is-show');
+        setTimeout(() => { if (!totopShown) totop.hidden = true; }, 250);
+      }
+    }
+  }, { passive: true });
 
   // raccourcis clavier globaux
   document.addEventListener('keydown', onKeydown);
@@ -411,12 +428,22 @@ function render() {
   if (!list.length) {
     grid.innerHTML = '';
     empty.hidden = false;
+    const filtersActive = STATE.filters.profession !== 'all' || STATE.filters.status || STATE.filters.query || STATE.filters.tag;
     if (!STATE.profiles.length) {
       $('#empty-title').textContent = 'Aucun profil';
-      $('#empty-text').textContent = 'Commencez en ajoutant un nouveau profil.';
-    } else {
+      $('#empty-text').textContent = 'Commencez en ajoutant un nouveau profil ou en important une liste Instagram.';
+      $('#empty-add').textContent = '+ Ajouter un profil';
+      $('#empty-add').onclick = () => openEditDialog();
+    } else if (filtersActive) {
       $('#empty-title').textContent = 'Aucun résultat';
-      $('#empty-text').textContent = 'Aucun profil ne correspond à votre recherche.';
+      $('#empty-text').textContent = 'Aucun profil ne correspond à vos filtres actuels.';
+      $('#empty-add').textContent = 'Réinitialiser les filtres';
+      $('#empty-add').onclick = () => resetFilters();
+    } else {
+      $('#empty-title').textContent = 'Aucun profil';
+      $('#empty-text').textContent = 'Commencez en ajoutant un nouveau profil.';
+      $('#empty-add').textContent = '+ Ajouter un profil';
+      $('#empty-add').onclick = () => openEditDialog();
     }
     return;
   }
@@ -490,6 +517,22 @@ function navigateProfile(direction) {
   if (idx === -1) return;
   const nextIdx = (idx + direction + list.length) % list.length;
   openProfileDialog(list[nextIdx].id);
+}
+
+async function duplicateProfile(p) {
+  const dup = {
+    ...p,
+    id: uid(),
+    name: p.name + ' (copie)',
+    instagram: '',
+    createdAt: undefined,
+    updatedAt: undefined,
+  };
+  await saveProfile(dup);
+  STATE.profiles.push(dup);
+  buildFilterChips();
+  render();
+  toast('Profil dupliqué — pensez à le renommer.', { type: 'ok' });
 }
 
 async function confirmDelete(profile) {
@@ -996,6 +1039,8 @@ function showContextMenu(profileId, x, y) {
   items.push({ separator: true });
   items.push({ label: 'Copier l’e-mail', action: 'copy-email', disabled: !p.email });
   items.push({ label: 'Copier le téléphone', action: 'copy-phone', disabled: !p.phone });
+  items.push({ label: 'Copier le handle Instagram', action: 'copy-ig', disabled: !p.instagram });
+  items.push({ label: 'Dupliquer', action: 'duplicate' });
   items.push({ separator: true });
   items.push({ label: 'Supprimer', action: 'delete', danger: true });
 
@@ -1054,6 +1099,11 @@ function showContextMenu(profileId, x, y) {
       navigator.clipboard.writeText(p.phone);
       toast('Téléphone copié.', { type: 'ok' });
     }
+    else if (act === 'copy-ig') {
+      navigator.clipboard.writeText('@' + p.instagram);
+      toast('Handle copié.', { type: 'ok' });
+    }
+    else if (act === 'duplicate') duplicateProfile(p);
     else if (act === 'delete') confirmDelete(p);
   };
 }
