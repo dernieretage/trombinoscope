@@ -324,6 +324,17 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
     content.appendChild(cs);
   }
 
+  // bio
+  if (profile.bio) {
+    const bioSec = section('Bio');
+    const bioEl = document.createElement('div');
+    bioEl.className = 'profile__notes';
+    bioEl.style.fontStyle = 'italic';
+    bioEl.textContent = profile.bio;
+    bioSec.appendChild(bioEl);
+    content.appendChild(bioSec);
+  }
+
   // tarif & dernier contact
   if (profile.rate || profile.lastContact) {
     const inf = section('Infos pratiques');

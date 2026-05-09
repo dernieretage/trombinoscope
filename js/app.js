@@ -866,6 +866,8 @@ async function bulkImportInstagramPhotos() {
   let done = 0, success = 0, totalImages = 0;
 
   for (const p of targets) {
+    const card = document.querySelector(`.card[data-id="${p.id}"]`);
+    card?.classList.add('is-importing');
     try {
       const r = await importInstagramForProfile(p, { silent: true });
       if (r.added > 0) {
@@ -873,11 +875,12 @@ async function bulkImportInstagramPhotos() {
         totalImages += r.added;
       }
     } catch (e) { /* continue */ }
+    card?.classList.remove('is-importing');
     done++;
     persist.dismiss();
     const t = toast(`Bulk IG : ${done} / ${targets.length} (${success} OK, ${totalImages} images)`, { type: 'info', timeout: 0 });
-    Object.assign(persist, t); // remplace référence pour le prochain dismiss
     persist.dismiss = t.dismiss;
+    render();
     // throttle pour éviter rate-limiting
     await new Promise(r => setTimeout(r, 800));
   }

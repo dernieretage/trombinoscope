@@ -17,18 +17,31 @@ Optionnellement, **synchronisation cross-device via GitHub Gist** et **scan IA v
 ### 📸 Récupération Instagram (auto)
 Bouton **« Importer Instagram »** sur chaque fiche :
 - Télécharge la **photo de profil**
-- Récupère les **9 dernières images publiques**
-- Utilise Microlink + proxys CORS publics avec fallbacks gracieux
-- Les images sont stockées localement (IndexedDB) et compressées
+- Récupère les **9 dernières images publiques** des posts
+- Pipeline en 3 étapes (testé en live) :
+  - Photo de profil + bio depuis Dumpor (via le proxy r.jina.ai)
+  - URLs des posts publics récents via DuckDuckGo (via r.jina.ai)
+  - Image OG de chaque post via l'API Microlink (gratuit)
+- Téléchargement direct depuis le CDN Instagram (CORS OK)
+- Auto-compression à 1080px @ q82 → ~30-100 KB par image
+- Filtre les logos/placeholders génériques
 
-> ⚠️ Dépend de la disponibilité des proxys publics et de l'accessibilité du profil IG. Si IG bloque, vous pouvez toujours faire un drag-and-drop manuel.
+**Action bulk** : menu → « Importer les photos IG manquantes » pour
+enrichir tous les profils sans images en un clic (throttle 800ms).
 
 ### ☁️ Synchronisation cross-device (optionnelle)
 Sync via un **Gist GitHub privé** (pas besoin de serveur) :
 1. Réglages → onglet « Synchronisation »
 2. Créer un PAT GitHub avec scope `gist`
 3. Coller le token, cliquer « Tester »
-4. Sync auto à chaque modification (debounced 4s) + pull au démarrage si distant plus récent
+4. Sync auto à chaque modification (debounced 2,5 s) + pull au démarrage si distant plus récent
+
+**Bouton « Sauvegarder » dans le topbar** une fois la sync activée :
+- 🟠 Orange + pulsation = des modifs en attente
+- 🔵 Bleu syncing = en cours
+- 🟢 Vert « Sauvegardé » = OK
+- 🔴 Rouge = erreur (clic pour réessayer)
+- Raccourci ⌘S / Ctrl+S
 
 > Vos données restent privées : elles vivent dans VOTRE compte GitHub, dans un gist privé.
 
