@@ -41,7 +41,12 @@ export function renderCard(profile, { firstImage, query, index = 0 } = {}) {
   const statusEl = node.querySelector('.card__status');
   if (profile.status && STATUS_BY_ID[profile.status]) {
     const s = STATUS_BY_ID[profile.status];
-    statusEl.textContent = s.label;
+    if (profile.status === 'favori') {
+      statusEl.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:11px;height:11px"><path d="M12 17l-6.18 3.7 1.64-7.03L2 8.97l7.19-.62L12 2l2.81 6.35L22 8.97l-5.46 4.7 1.64 7.03L12 17z" fill="currentColor"/></svg> ' + s.label;
+      statusEl.classList.add('card__status--fav');
+    } else {
+      statusEl.textContent = s.label;
+    }
     statusEl.style.setProperty('--c', s.color);
   } else {
     statusEl.remove();

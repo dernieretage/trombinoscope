@@ -6,6 +6,15 @@
 <meta name="theme-color" content="#0f0e0c" />
 <meta name="description" content="Trombinoscope — répertoire de techniciens audiovisuels, photographes, réalisateurs, stylistes, maquilleurs et autres talents." />
 <meta name="color-scheme" content="dark light" />
+<meta name="application-name" content="Trombinoscope" />
+<meta name="apple-mobile-web-app-title" content="Trombinoscope" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Trombinoscope" />
+<meta property="og:description" content="Répertoire local-first de talents audiovisuels — recherche instantanée, fiches enrichies, sauvegarde JSON." />
+<meta property="og:image" content="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 630'%3E%3Crect width='1200' height='630' fill='%230c0b0a'/%3E%3Ctext x='600' y='340' text-anchor='middle' font-family='Georgia,serif' font-size='180' font-weight='600' fill='%23e8a87c'%3ETrombinoscope%3C/text%3E%3Ctext x='600' y='430' text-anchor='middle' font-family='Inter,sans-serif' font-size='32' fill='%23b8ad95'%3ER%C3%A9pertoire de talents audiovisuels%3C/text%3E%3C/svg%3E" />
+<meta name="twitter:card" content="summary_large_image" />
 <title>Trombinoscope</title>
 
 <link rel="manifest" href="manifest.webmanifest" />
@@ -77,6 +86,7 @@
         <div class="select">
           <label class="visually-hidden" for="sort-select">Tri</label>
           <select id="sort-select" aria-label="Trier les profils">
+            <option value="favoris">Tri : Favoris d'abord</option>
             <option value="name">Tri : Alphabétique</option>
             <option value="recent">Tri : Récemment modifiés</option>
             <option value="created">Tri : Récemment ajoutés</option>

@@ -363,12 +363,19 @@ function applyFilters() {
     });
   }
 
+  const STATUS_RANK = { favori: 0, en_cours: 1, collabore: 2, a_contacter: 3, '': 4 };
   const cmp = {
     name: (a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base' }),
+    favoris: (a, b) => {
+      const ra = a.status === 'favori' ? 0 : 1;
+      const rb = b.status === 'favori' ? 0 : 1;
+      if (ra !== rb) return ra - rb;
+      return (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base' });
+    },
     recent: (a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''),
     created: (a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''),
     profession: (a, b) => (a.profession || '').localeCompare(b.profession || '', 'fr') || (a.name || '').localeCompare(b.name || '', 'fr'),
-    status: (a, b) => (a.status || 'zz').localeCompare(b.status || 'zz') || (a.name || '').localeCompare(b.name || '', 'fr'),
+    status: (a, b) => (STATUS_RANK[a.status ?? ''] ?? 4) - (STATUS_RANK[b.status ?? ''] ?? 4) || (a.name || '').localeCompare(b.name || '', 'fr'),
   };
   list = [...list].sort(cmp[sort] || cmp.name);
   STATE.filtered = list;
