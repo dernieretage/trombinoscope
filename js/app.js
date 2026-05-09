@@ -665,27 +665,7 @@ function hookEditForm() {
 
   function addFiles(files) {
     for (const f of files) pendingFiles.push(f);
-    list.hidden = false;
-    list.innerHTML = '';
-    pendingFiles.forEach((f, i) => {
-      const item = document.createElement('div');
-      item.className = 'dropzone__item';
-      const url = URL.createObjectURL(f);
-      item.style.backgroundImage = `url("${url}")`;
-      const rm = document.createElement('button');
-      rm.className = 'dropzone__rm';
-      rm.title = 'Retirer';
-      rm.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
-      rm.addEventListener('click', (e) => {
-        e.stopPropagation();
-        URL.revokeObjectURL(url);
-        pendingFiles.splice(i, 1);
-        addFiles([]);
-      });
-      item.appendChild(rm);
-      list.appendChild(item);
-    });
-    if (!pendingFiles.length) list.hidden = true;
+    refreshDropzonePreview();
   }
 }
 
@@ -1121,25 +1101,59 @@ window.addEventListener('scroll', closeContextMenu, true);
 // ============= PASTE IMAGE =============
 
 async function onPaste(e) {
-  // Si on est dans un champ texte autre que la zone d'images, ignore
-  if (isTypingContext()) return;
   const items = Array.from(e.clipboardData?.items || []);
   const imgItem = items.find(it => it.type.startsWith('image/'));
   if (!imgItem) return;
+  // Si on est dans un input texte mais pas dans la dropzone, ignore
+  const inEdit = $('#edit-dialog').open;
+  const inProfile = $('#profile-dialog').open;
+  if (!inEdit && !inProfile && isTypingContext()) return;
 
   const file = imgItem.getAsFile();
   if (!file) return;
   e.preventDefault();
 
+  // si la modal d'édition est ouverte → ajoute aux fichiers en attente
+  if (inEdit) {
+    pendingFiles.push(file);
+    refreshDropzonePreview();
+    toast('Image collée. Enregistrez pour l’ajouter au profil.', { type: 'ok' });
+    return;
+  }
   // si la modal détail est ouverte → ajoute au profil courant
-  if ($('#profile-dialog').open && STATE.current) {
+  if (inProfile && STATE.current) {
     await addImagesToProfile(STATE.current, [file]);
     const imgs = await getProfileImages(STATE.current.id);
     STATE.imagesByProfile.set(STATE.current.id, imgs);
     openProfileDialog(STATE.current.id);
     render();
-    toast('Image collée au profil.', { type: 'ok' });
+    toast('Image ajoutée au profil.', { type: 'ok' });
     return;
   }
   toast('Pour coller une image, ouvrez d’abord un profil ou son éditeur.', { type: 'warn' });
+}
+
+function refreshDropzonePreview() {
+  const list = $('#dropzone-list');
+  if (!pendingFiles.length) { list.hidden = true; list.innerHTML = ''; return; }
+  list.hidden = false;
+  list.innerHTML = '';
+  pendingFiles.forEach((f, i) => {
+    const item = document.createElement('div');
+    item.className = 'dropzone__item';
+    const url = URL.createObjectURL(f);
+    item.style.backgroundImage = `url("${url}")`;
+    const rm = document.createElement('button');
+    rm.className = 'dropzone__rm';
+    rm.title = 'Retirer';
+    rm.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+    rm.addEventListener('click', (e) => {
+      e.stopPropagation();
+      URL.revokeObjectURL(url);
+      pendingFiles.splice(i, 1);
+      refreshDropzonePreview();
+    });
+    item.appendChild(rm);
+    list.appendChild(item);
+  });
 }

@@ -152,7 +152,10 @@ export function renderRow(profile, { firstImage, query, index = 0 } = {}) {
 // =================================================================
 
 export function renderProfileDetail(container, profile, images, { onEdit, onDelete, onClose, onPrev, onNext, onStatusChange, onNotesChange, onUploadImages, onDeleteImage } = {}) {
+  // Replace innerHTML with a fresh root to clear any prior delegated listener
   container.innerHTML = '';
+  // remove any previous listener by creating a fresh delegated handler each time
+  if (container.__delHandler) container.removeEventListener('click', container.__delHandler);
 
   const wrap = document.createElement('div');
   wrap.className = 'profile';
@@ -379,8 +382,8 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
   wrap.appendChild(body);
   container.appendChild(wrap);
 
-  // events
-  container.addEventListener('click', (e) => {
+  // events (delegated, with single-listener guarantee)
+  const handler = (e) => {
     const act = e.target.closest('[data-act]')?.dataset.act;
     if (!act) return;
     if (act === 'edit') onEdit?.();
@@ -388,7 +391,9 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
     else if (act === 'close') onClose?.();
     else if (act === 'prev') onPrev?.();
     else if (act === 'next') onNext?.();
-  });
+  };
+  container.__delHandler = handler;
+  container.addEventListener('click', handler);
 
   // upload images depuis le profil
   const uploadInput = container.querySelector('[data-act="upload"]');
