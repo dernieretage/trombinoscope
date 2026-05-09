@@ -115,8 +115,18 @@ export async function fetchPostImage(postUrl) {
   const data = await microlinkGet(postUrl);
   const img = data?.image?.url;
   if (!img) throw new Error('Microlink: pas d\'image trouvée');
-  // Filtrer les logos / placeholders Instagram
-  if (/static\.cdninstagram\.com\/rsrc/i.test(img) || /\.svg$/i.test(img)) {
+  // Filtrer les logos / placeholders Instagram (multiples patterns)
+  const isGeneric = (
+    /static\.cdninstagram\.com\/rsrc/i.test(img) ||
+    /static\.cdninstagram\.com\/r\//i.test(img) ||
+    /\/rsrc\.php/i.test(img) ||
+    /facebook\.com\/[a-z]\//i.test(img) ||
+    /\.(svg|gif)$/i.test(img) ||
+    /apple-touch-icon/i.test(img) ||
+    /default[_-]?(profile|avatar|placeholder)/i.test(img) ||
+    img.includes('cdninstagram.com/rsrc.php')
+  );
+  if (isGeneric) {
     throw new Error('Image générique IG (post peut-être supprimé)');
   }
   return { url: img, caption: data.description || '', date: data.date };

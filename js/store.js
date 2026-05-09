@@ -110,6 +110,11 @@ export async function saveImage(profileId, index, blob) {
   const key = `${profileId}::${index}`;
   const store = await tx(STORE_IMAGES, 'readwrite');
   await reqToPromise(store.put({ key, profileId, index, blob, type: blob.type, size: blob.size, addedAt: Date.now() }));
+  // Invalider le cache d'objectURL pour cette clé (utile en cas de remplacement)
+  try {
+    const u = await import('./utils.js');
+    u.revokeObjectURL(key);
+  } catch {}
   return key;
 }
 
@@ -146,10 +151,12 @@ export async function deleteProfileImages(profileId) {
   const imgStore = await tx(STORE_IMAGES, 'readwrite');
   const range = IDBKeyRange.bound(`${profileId}::`, `${profileId}::￿`);
   const req = imgStore.openCursor(range);
-  return new Promise((resolve) => {
+  const keys = [];
+  await new Promise((resolve) => {
     req.onsuccess = () => {
       const cursor = req.result;
       if (cursor) {
+        keys.push(cursor.value.key);
         cursor.delete();
         cursor.continue();
       } else {
@@ -157,6 +164,11 @@ export async function deleteProfileImages(profileId) {
       }
     };
   });
+  // Invalider les objectURLs en cache
+  try {
+    const u = await import('./utils.js');
+    for (const k of keys) u.revokeObjectURL(k);
+  } catch {}
 }
 
 // ============= META =============

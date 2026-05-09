@@ -782,17 +782,26 @@ async function importInstagramForProfile(profile, { silent = false } = {}) {
       },
     });
 
-    // Téléchargement des blobs (profile pic en premier si disponible, puis posts)
+    // Téléchargement + compression des blobs (profile pic en premier si dispo, puis posts)
     const newImgsToInsert = [];
+    async function downloadAndCompress(url) {
+      const raw = await fetchImageAsBlob(url);
+      // Filtre robuste : rejeter blobs trop petits (probablement un logo ou icône générique)
+      if (raw.size < 12000) throw new Error('Image trop petite (probable logo/placeholder)');
+      // Compresser à 1080px max pour économiser le stockage IndexedDB
+      try {
+        return await downscaleImage(raw, { maxDim: 1080, quality: 0.82 });
+      } catch { return raw; }
+    }
     if (result.profilePic?.url) {
       try {
-        const blob = await fetchImageAsBlob(result.profilePic.url);
+        const blob = await downloadAndCompress(result.profilePic.url);
         newImgsToInsert.push(blob);
       } catch (e) { result.errors.push('blob profile-pic : ' + e.message); }
     }
     for (const post of result.posts) {
       try {
-        const blob = await fetchImageAsBlob(post.url);
+        const blob = await downloadAndCompress(post.url);
         newImgsToInsert.push(blob);
       } catch (e) { /* skip */ }
     }
