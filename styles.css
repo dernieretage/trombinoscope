@@ -137,6 +137,11 @@ kbd {
   50%      { transform: scale(1.07); opacity: 1; }
 }
 body.is-ready .boot { opacity: 0; visibility: hidden; pointer-events: none; }
+/* Filet de sécurité : si le JS plante, le boot disparaît tout de même au bout de 5s */
+@keyframes bootEscape {
+  to { opacity: 0; visibility: hidden; }
+}
+.boot { animation: bootEscape 100ms linear 5s forwards; }
 
 /* ============================================================
    TOPBAR
