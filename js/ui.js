@@ -282,7 +282,13 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
 
   // contacts
   const contacts = [];
-  if (profile.phone) contacts.push({ icon: 'phone', label: profile.phone, href: 'tel:' + profile.phone.replace(/\s+/g, '') });
+  if (profile.phone) {
+    contacts.push({ icon: 'phone', label: profile.phone, href: 'tel:' + profile.phone.replace(/\s+/g, '') });
+    const cleanPhone = profile.phone.replace(/\D/g, '');
+    if (cleanPhone.length >= 8) {
+      contacts.push({ icon: 'wa', label: 'WhatsApp', href: 'https://wa.me/' + cleanPhone.replace(/^0/, '33') });
+    }
+  }
   if (profile.email) contacts.push({ icon: 'mail', label: profile.email, href: 'mailto:' + profile.email });
   if (profile.instagram) contacts.push({ icon: 'ig', label: '@' + profile.instagram, href: 'https://instagram.com/' + profile.instagram });
   if (profile.website) contacts.push({ icon: 'link', label: profile.website.replace(/^https?:\/\//, ''), href: profile.website });
@@ -300,6 +306,30 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
     }
     cs.appendChild(grid);
     content.appendChild(cs);
+  }
+
+  // tarif & dernier contact
+  if (profile.rate || profile.lastContact) {
+    const inf = section('Infos pratiques');
+    const grid = document.createElement('div');
+    grid.className = 'profile__contacts';
+    if (profile.rate) {
+      const a = document.createElement('div');
+      a.className = 'profile__contact';
+      a.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H10c-1.7 0-3 1.3-3 3s1.3 3 3 3h4c1.7 0 3 1.3 3 3s-1.3 3-3 3H7" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>' + escapeHTML(profile.rate) + '</span>';
+      grid.appendChild(a);
+    }
+    if (profile.lastContact) {
+      const a = document.createElement('div');
+      a.className = 'profile__contact';
+      const d = new Date(profile.lastContact);
+      const days = Math.round((Date.now() - d.getTime()) / 86400000);
+      const since = days <= 0 ? 'aujourd\'hui' : days === 1 ? 'hier' : days < 30 ? `il y a ${days} j` : days < 365 ? `il y a ${Math.round(days / 30)} mois` : `il y a ${Math.round(days / 365)} an${days >= 730 ? 's' : ''}`;
+      a.innerHTML = `<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span>Dernier contact : ${escapeHTML(fmtDate(profile.lastContact))} (${since})</span>`;
+      grid.appendChild(a);
+    }
+    inf.appendChild(grid);
+    content.appendChild(inf);
   }
 
   // tags
@@ -430,6 +460,7 @@ export function svgIcon(name) {
     link:  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M15 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/></svg>',
     ig:    '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="17.2" cy="6.8" r="1.1" fill="currentColor"/></svg>',
     pin:   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s7-7 7-13a7 7 0 0 0-14 0c0 6 7 13 7 13z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="9" r="2.5" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>',
+    wa:    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 11.4c0 4.7-3.8 8.5-8.6 8.5-1.5 0-3-.4-4.3-1.1L3 20l1.3-4.4c-.8-1.4-1.3-3-1.3-4.7 0-4.7 3.8-8.5 8.6-8.5s8.9 4.4 8.9 9zm-9-7c-3.6 0-6.6 2.9-6.6 6.6 0 1.5.5 2.9 1.4 4l-.9 2.5 2.6-.8c1.1.6 2.3.9 3.5.9 3.6 0 6.6-2.9 6.6-6.6 0-3.7-3-6.6-6.6-6.6zm3.7 8.4c-.1-.1-.2-.2-.4-.3-.2-.1-1.2-.6-1.4-.6-.2-.1-.3-.1-.4.1-.1.2-.5.6-.6.7-.1.1-.2.1-.4 0-.2-.1-.8-.3-1.5-.9-.6-.5-1-1.1-1.1-1.3-.1-.2 0-.3.1-.4.1-.1.2-.2.3-.3.1-.1.1-.2.2-.3 0-.1 0-.2 0-.3 0-.1-.4-.9-.5-1.2-.1-.3-.3-.3-.4-.3h-.3c-.1 0-.3 0-.5.2-.2.2-.6.6-.6 1.5s.7 1.7.7 1.8c.1.1 1.4 2.1 3.4 2.9 1.7.7 1.9.6 2.3.5.4-.1 1.2-.5 1.3-.9.2-.5.2-.9.1-.9z" fill="currentColor"/></svg>',
   };
   return icons[name] || '';
 }

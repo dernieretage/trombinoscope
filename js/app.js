@@ -577,6 +577,8 @@ function openEditDialog(profile = null) {
     form.elements.email.value = profile.email || '';
     form.elements.website.value = profile.website || '';
     form.elements.location.value = profile.location || '';
+    form.elements.rate.value = profile.rate || '';
+    form.elements.lastContact.value = profile.lastContact || '';
     form.elements.tags.value = (profile.tags || []).join(', ');
     form.elements.notes.value = profile.notes || '';
   }
@@ -633,6 +635,8 @@ function hookEditForm() {
       email: data.email.trim(),
       website: data.website.trim(),
       location: data.location.trim(),
+      rate: (data.rate || '').trim(),
+      lastContact: data.lastContact || '',
       tags: (data.tags || '').split(',').map(t => t.trim()).filter(Boolean),
       notes: data.notes,
     };
