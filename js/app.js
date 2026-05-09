@@ -878,17 +878,29 @@ function renderStats(filtered) {
   $('#stat-clear').hidden = !filtered_active;
 }
 function animateNumber(el, target) {
-  const cur = parseInt(el.textContent, 10) || 0;
-  if (cur === target) return;
-  const start = performance.now();
+  if (!el) return;
+  const cur = parseInt(el.textContent, 10);
+  const from = Number.isFinite(cur) ? cur : 0;
+  if (from === target) return;
+  // Anim avec setTimeout pour fiabilité maximale
   const dur = 450;
-  function step(now) {
-    const p = Math.min(1, (now - start) / dur);
+  const steps = 18;
+  const stepMs = dur / steps;
+  let i = 0;
+  const tick = () => {
+    i++;
+    const p = Math.min(1, i / steps);
     const eased = 1 - Math.pow(1 - p, 3);
-    el.textContent = Math.round(cur + (target - cur) * eased);
-    if (p < 1) requestAnimationFrame(step);
+    el.textContent = String(Math.round(from + (target - from) * eased));
+    if (p < 1) setTimeout(tick, stepMs);
+  };
+  // si déjà en cours, on annule pas — on laisse converger via le state final
+  el.textContent = String(target); // valeur définitive immédiate (les rendus suivants ne ré-animent pas)
+  // mais faire l'animation visuellement quand même : si on veut animer, on revert puis tick
+  if (Math.abs(target - from) > 0) {
+    el.textContent = String(from);
+    setTimeout(tick, stepMs);
   }
-  requestAnimationFrame(step);
 }
 
 function resetFilters() {
