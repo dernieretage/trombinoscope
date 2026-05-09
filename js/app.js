@@ -255,6 +255,8 @@ function hookUI() {
     if (a === 'export') return doExport();
     if (a === 'import') return triggerImport();
     if (a === 'bulk-import') return openBulkDialog();
+    if (a === 'copy-emails') return copyEmailsOfFiltered();
+    if (a === 'copy-handles') return copyHandlesOfFiltered();
     if (a === 'seed') return doReSeed();
     if (a === 'shortcuts') return openDialog('shortcuts-dialog');
     if (a === 'reset') return doReset();
@@ -748,6 +750,46 @@ function parseBulk(text) {
 
 // ============= EXPORT / IMPORT =============
 
+async function safeCopy(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // fallback: textarea
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch {}
+    ta.remove();
+    return ok;
+  }
+}
+
+async function copyEmailsOfFiltered() {
+  const list = STATE.filtered.length ? STATE.filtered : applyFilters();
+  const emails = list.map(p => p.email).filter(Boolean);
+  if (!emails.length) {
+    toast('Aucun e-mail dans la sélection actuelle.', { type: 'warn' });
+    return;
+  }
+  const ok = await safeCopy(emails.join(', '));
+  toast(`${emails.length} e-mail${emails.length > 1 ? 's' : ''} ${ok ? 'copié' : 'préparé (copie manuelle)'}${emails.length > 1 ? 's' : ''}.`, { type: ok ? 'ok' : 'warn' });
+}
+
+async function copyHandlesOfFiltered() {
+  const list = STATE.filtered.length ? STATE.filtered : applyFilters();
+  const handles = list.map(p => p.instagram).filter(Boolean).map(h => '@' + h);
+  if (!handles.length) {
+    toast('Aucun handle Instagram dans la sélection actuelle.', { type: 'warn' });
+    return;
+  }
+  const ok = await safeCopy(handles.join('\n'));
+  toast(`${handles.length} handle${handles.length > 1 ? 's' : ''} ${ok ? 'copié' : 'préparé (copie manuelle)'}${handles.length > 1 ? 's' : ''}.`, { type: ok ? 'ok' : 'warn' });
+}
+
 async function doExport() {
   const data = await exportAll();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1072,16 +1114,16 @@ function showContextMenu(profileId, x, y) {
       toast(p.status === 'collabore' ? 'Marqué "Déjà collaboré".' : 'Statut retiré.', { type: 'ok' });
     }
     else if (act === 'copy-email') {
-      navigator.clipboard.writeText(p.email);
-      toast('E-mail copié.', { type: 'ok' });
+      const ok = await safeCopy(p.email);
+      toast(ok ? 'E-mail copié.' : 'Copie échouée.', { type: ok ? 'ok' : 'err' });
     }
     else if (act === 'copy-phone') {
-      navigator.clipboard.writeText(p.phone);
-      toast('Téléphone copié.', { type: 'ok' });
+      const ok = await safeCopy(p.phone);
+      toast(ok ? 'Téléphone copié.' : 'Copie échouée.', { type: ok ? 'ok' : 'err' });
     }
     else if (act === 'copy-ig') {
-      navigator.clipboard.writeText('@' + p.instagram);
-      toast('Handle copié.', { type: 'ok' });
+      const ok = await safeCopy('@' + p.instagram);
+      toast(ok ? 'Handle copié.' : 'Copie échouée.', { type: ok ? 'ok' : 'err' });
     }
     else if (act === 'duplicate') duplicateProfile(p);
     else if (act === 'delete') confirmDelete(p);
