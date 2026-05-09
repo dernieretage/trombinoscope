@@ -83,8 +83,8 @@ const STATE = {
 
   render();
 
-  // remove boot veil
-  requestAnimationFrame(() => document.body.classList.add('is-ready'));
+  // remove boot veil (setTimeout fallback for unreliable rAF environments)
+  setTimeout(() => document.body.classList.add('is-ready'), 50);
   // PWA
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -357,7 +357,7 @@ function toggleMenu() {
   m.style.top = (r.bottom + 6) + 'px';
   m.style.right = (window.innerWidth - r.right) + 'px';
   m.style.left = 'auto';
-  requestAnimationFrame(() => m.classList.add('is-open'));
+  setTimeout(() => m.classList.add('is-open'), 16);
   $('#menu-toggle').setAttribute('aria-expanded', 'true');
   // usage
   estimateUsage().then(({ usage, quota }) => {
