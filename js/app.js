@@ -24,11 +24,13 @@ const STATE = {
     query: '',
     profession: 'all',  // 'all' ou nom de métier
     status: '',         // '' ou id de statut
-    sort: 'name',       // 'name' | 'recent' | 'created' | 'profession' | 'status'
+    tag: '',            // '' ou tag
+    sort: 'favoris',    // 'favoris' | 'name' | 'recent' | 'created' | 'profession' | 'status'
   },
   view: 'grid',         // 'grid' | 'list'
   current: null,        // profile ouvert dans modal
   filtered: [],
+  recentlyViewed: [],   // ids des derniers profils ouverts
 };
 
 // ============= INIT =============
@@ -38,7 +40,7 @@ const STATE = {
   const theme = await getMeta('theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
   document.body.dataset.theme = theme;
   STATE.view = await getMeta('view') || 'grid';
-  STATE.filters.sort = await getMeta('sort') || 'name';
+  STATE.filters.sort = await getMeta('sort') || 'favoris';
   STATE.filters.profession = await getMeta('profession') || 'all';
 
   // seed initial si DB vide — on antidate la création pour ne pas marquer "Nouveau"
@@ -276,6 +278,7 @@ function hookUI() {
   // grid card click delegation (avec quick actions)
   $('#grid').addEventListener('click', (e) => {
     const quick = e.target.closest('[data-quick]');
+    const tagEl = e.target.closest('.tag:not(.tag--more)');
     const card = e.target.closest('.card, .row');
     if (!card) return;
     if (quick) {
@@ -283,8 +286,17 @@ function hookUI() {
       handleQuickAction(card.dataset.id, quick.dataset.quick);
       return;
     }
+    if (tagEl && tagEl.dataset.tag) {
+      e.stopPropagation();
+      setTagFilter(tagEl.dataset.tag);
+      return;
+    }
     openProfileDialog(card.dataset.id);
   });
+
+  // tag bar
+  $('#tag-bar-clear').addEventListener('click', () => { STATE.filters.tag = ''; render(); });
+  $('#tag-bar-active').addEventListener('click', () => { STATE.filters.tag = ''; render(); });
   $('#grid').addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     const card = e.target.closest('.card, .row');
@@ -353,6 +365,10 @@ function applyFilters() {
 
   if (profession !== 'all') list = list.filter(p => p.profession === profession);
   if (status) list = list.filter(p => p.status === status);
+  if (STATE.filters.tag) {
+    const t = STATE.filters.tag.toLowerCase();
+    list = list.filter(p => (p.tags || []).some(x => x.toLowerCase() === t));
+  }
   if (q) {
     list = list.filter(p => {
       const blob = [
@@ -389,6 +405,7 @@ function render() {
   $('#brand-count').textContent = STATE.profiles.length;
 
   renderStats(list);
+  renderTagBar();
 
   // empty state
   if (!list.length) {
@@ -809,15 +826,28 @@ async function doReset() {
 // ============= KEYBOARD =============
 
 function onKeydown(e) {
-  // dans modal → seules les flèches naviguent
+  // dans modal → flèches naviguent + F bascule favori
   const profileOpen = $('#profile-dialog').open;
   if (e.key === 'Escape') {
     closeMenu();
+    closeContextMenu();
     return; // dialog gère son close
   }
   if (profileOpen && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
     e.preventDefault();
     navigateProfile(e.key === 'ArrowLeft' ? -1 : +1);
+    return;
+  }
+  if (profileOpen && e.key.toLowerCase() === 'f' && !isTypingContext()) {
+    e.preventDefault();
+    if (STATE.current) {
+      STATE.current.status = STATE.current.status === 'favori' ? '' : 'favori';
+      saveProfile(STATE.current).then(() => {
+        openProfileDialog(STATE.current.id);
+        render();
+        toast(STATE.current.status === 'favori' ? '⭐ Ajouté aux favoris' : 'Retiré des favoris', { type: 'ok' });
+      });
+    }
     return;
   }
   if (isTypingContext()) return;
@@ -911,12 +941,27 @@ function animateNumber(el, target) {
 }
 
 function resetFilters() {
-  STATE.filters = { ...STATE.filters, profession: 'all', status: '', query: '' };
+  STATE.filters = { ...STATE.filters, profession: 'all', status: '', query: '', tag: '' };
   $('#search-input').value = '';
   $('#search-clear').hidden = true;
   setMeta('profession', 'all');
   buildFilterChips();
   buildStatusFilters();
+  render();
+}
+
+function renderTagBar() {
+  const bar = $('#tag-bar');
+  if (STATE.filters.tag) {
+    bar.hidden = false;
+    $('#tag-bar-active').textContent = '#' + STATE.filters.tag;
+  } else {
+    bar.hidden = true;
+  }
+}
+
+function setTagFilter(tag) {
+  STATE.filters.tag = STATE.filters.tag === tag ? '' : tag;
   render();
 }
 

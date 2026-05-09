@@ -63,6 +63,8 @@ export function renderCard(profile, { firstImage, query, index = 0 } = {}) {
   for (const t of tags) {
     const span = document.createElement('span');
     span.className = 'tag';
+    span.dataset.tag = t;
+    span.title = `Filtrer par #${t}`;
     span.innerHTML = highlight(t, query);
     tagsEl.appendChild(span);
   }

@@ -79,6 +79,11 @@
       <div class="chips" id="profession-chips" role="tablist" aria-label="Filtrer par métier">
         <!-- chips injectées en JS -->
       </div>
+      <div class="tag-bar" id="tag-bar" hidden>
+        <span class="tag-bar__label">Tags actifs :</span>
+        <button class="tag-bar__chip" id="tag-bar-active" type="button"></button>
+        <button class="tag-bar__clear" id="tag-bar-clear" type="button" aria-label="Effacer le filtre tag">×</button>
+      </div>
       <div class="filterbar__right">
         <div class="status-filters" id="status-filters" aria-label="Filtrer par statut">
           <!-- status pills injectées en JS -->
@@ -315,7 +320,10 @@
       <li><kbd>?</kbd> <span>Cette aide</span></li>
       <li><kbd>Esc</kbd> <span>Fermer modal</span></li>
       <li><kbd>1</kbd>…<kbd>9</kbd> <span>Filtre métier rapide</span></li>
-      <li><kbd>↑</kbd>/<kbd>↓</kbd>/<kbd>←</kbd>/<kbd>→</kbd> <span>Naviguer entre profils (modal ouvert)</span></li>
+      <li><kbd>←</kbd> / <kbd>→</kbd> <span>Profil précédent / suivant (modal ouvert)</span></li>
+      <li><kbd>F</kbd> <span>Basculer favori (modal ouvert)</span></li>
+      <li><kbd>Clic droit</kbd> <span>Menu d'actions sur une fiche</span></li>
+      <li><kbd>Coller</kbd> <span>Image presse-papier dans le profil ouvert</span></li>
     </ul>
   </div>
 </dialog>
