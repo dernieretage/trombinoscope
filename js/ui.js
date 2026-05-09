@@ -4,6 +4,10 @@ import { STATUSES } from './seed.js';
 
 const STATUS_BY_ID = Object.fromEntries(STATUSES.map(s => [s.id, s]));
 
+function professionsOf(p) {
+  return p.professions || (p.profession ? [p.profession] : []);
+}
+
 // =================================================================
 // AVATAR / IMAGE
 // =================================================================
@@ -54,7 +58,9 @@ export function renderCard(profile, { firstImage, query, index = 0 } = {}) {
 
   // texte
   node.querySelector('.card__name').innerHTML = highlight(profile.name || profile.instagram || 'Sans nom', query);
-  const meta = [profile.profession, profile.location].filter(Boolean).join(' · ');
+  const pros = professionsOf(profile);
+  const proStr = pros.length ? (pros.length > 2 ? pros.slice(0, 2).join(' · ') + ` +${pros.length - 2}` : pros.join(' · ')) : '';
+  const meta = [proStr, profile.location].filter(Boolean).join(' · ');
   node.querySelector('.card__meta').innerHTML = highlight(meta || '—', query);
 
   // tags
@@ -115,7 +121,7 @@ export function renderRow(profile, { firstImage, query, index = 0 } = {}) {
   applyAvatar(avatarEl, profile, firstImage);
 
   node.querySelector('.row__name').innerHTML = highlight(profile.name || profile.instagram || 'Sans nom', query);
-  const meta = [profile.profession, profile.location, profile.instagram ? '@' + profile.instagram : ''].filter(Boolean).join(' · ');
+  const meta = [professionsOf(profile).join(' · '), profile.location, profile.instagram ? '@' + profile.instagram : ''].filter(Boolean).join(' · ');
   node.querySelector('.row__meta').innerHTML = highlight(meta, query);
 
   const tagsEl = node.querySelector('.row__tags');
@@ -151,7 +157,7 @@ export function renderRow(profile, { firstImage, query, index = 0 } = {}) {
 // PROFILE DETAIL DIALOG
 // =================================================================
 
-export function renderProfileDetail(container, profile, images, { onEdit, onDelete, onClose, onPrev, onNext, onStatusChange, onNotesChange, onUploadImages, onDeleteImage } = {}) {
+export function renderProfileDetail(container, profile, images, { onEdit, onDelete, onClose, onPrev, onNext, onStatusChange, onNotesChange, onUploadImages, onDeleteImage, onFetchIg, onAiScan } = {}) {
   // Replace innerHTML with a fresh root to clear any prior delegated listener
   container.innerHTML = '';
   // remove any previous listener by creating a fresh delegated handler each time
@@ -182,10 +188,20 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
     </button>`;
   media.appendChild(nav);
 
-  // outils (edit, close)
+  // outils (fetch ig, ai scan, upload, edit, close)
   const tools = document.createElement('div');
   tools.className = 'profile__tools';
+  const igBtn = profile.instagram ? `
+    <button class="iconbtn" data-act="fetch-ig" title="Importer photo & posts Instagram" aria-label="Importer Instagram">
+      <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="17.2" cy="6.8" r="1.1" fill="currentColor"/><path d="M5 19l4-3 3 2 5-4 2 1.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity=".6"/></svg>
+    </button>` : '';
+  const aiBtn = profile.instagram || profile.name ? `
+    <button class="iconbtn" data-act="ai-scan" title="Scan IA : compléter automatiquement (expérimental)" aria-label="Scan IA">
+      <svg viewBox="0 0 24 24"><path d="M12 2l1.7 4.5L18 8l-4.3 2L12 14l-1.7-4L6 8l4.3-1.5L12 2zM5 16l1 2.5L8.5 19 6 20l-1 2.5L4 20 1.5 19 4 18 5 16zM18 14l1.4 3.4L23 18l-3.6 1L18 22l-1.4-3-3.6-1 3.6-1.6L18 14z" fill="currentColor"/></svg>
+    </button>` : '';
   tools.innerHTML = `
+    ${igBtn}
+    ${aiBtn}
     <label class="iconbtn" title="Ajouter des images" aria-label="Ajouter des images">
       <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg>
       <input type="file" accept="image/*" multiple hidden data-act="upload" />
@@ -238,10 +254,10 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
 
   const sub = document.createElement('div');
   sub.className = 'profile__sub';
-  if (profile.profession) {
+  for (const pro of professionsOf(profile)) {
     const pTag = document.createElement('span');
     pTag.className = 'tag';
-    pTag.textContent = profile.profession;
+    pTag.textContent = pro;
     sub.appendChild(pTag);
   }
   if (profile.location) {
@@ -421,6 +437,8 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
     else if (act === 'close') onClose?.();
     else if (act === 'prev') onPrev?.();
     else if (act === 'next') onNext?.();
+    else if (act === 'fetch-ig') onFetchIg?.();
+    else if (act === 'ai-scan') onAiScan?.();
   };
   container.__delHandler = handler;
   container.addEventListener('click', handler);

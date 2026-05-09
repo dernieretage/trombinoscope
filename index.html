@@ -44,6 +44,7 @@
       </svg>
       <span class="brand__name">Trombinoscope</span>
       <span class="brand__count" id="brand-count" aria-live="polite">—</span>
+      <span class="sync-pill off" id="sync-pill" title="Statut de synchronisation"></span>
     </button>
 
     <div class="search" role="search">
@@ -193,6 +194,10 @@
     <span>Recharger les profils initiaux…</span>
   </button>
   <hr class="menu__sep"/>
+  <button class="menu__item" data-action="settings" role="menuitem">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+    <span>Réglages (sync, IA…)</span>
+  </button>
   <button class="menu__item" data-action="shortcuts" role="menuitem">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14v8H5z M3 12h2 M19 12h2 M9 8V6 M15 8V6 M9 18v-2 M15 18v-2" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
     <span>Raccourcis clavier</span>
@@ -227,9 +232,13 @@
         <input name="name" required placeholder="Ex. Camille Dupont" autocomplete="off" />
       </label>
       <label class="field">
-        <span>Métier</span>
-        <input name="profession" list="profession-list" required placeholder="Ex. Styliste" autocomplete="off" />
-        <datalist id="profession-list"></datalist>
+        <span>Métier(s)</span>
+        <div class="multichip" id="profession-multichip" tabindex="0" role="combobox" aria-label="Choisir un ou plusieurs métiers">
+          <span class="multichip__chips"></span>
+          <input class="multichip__input" name="professions_input" list="profession-list" placeholder="Ajouter un métier…" autocomplete="off" />
+          <datalist id="profession-list"></datalist>
+        </div>
+        <input type="hidden" name="professions" />
       </label>
       <label class="field">
         <span>Statut</span>
@@ -345,6 +354,128 @@
       <li><kbd>Clic droit</kbd> <span>Menu d'actions sur une fiche</span></li>
       <li><kbd>Coller</kbd> <span>Image presse-papier dans le profil ouvert</span></li>
     </ul>
+  </div>
+</dialog>
+
+<!-- ===== Settings modal (sync + AI) ===== -->
+<dialog id="settings-dialog" class="dialog dialog--settings" aria-labelledby="settings-title">
+  <div class="dialog__inner">
+    <header class="dialog__head">
+      <h2 id="settings-title">Réglages</h2>
+      <button type="button" class="iconbtn" data-close aria-label="Fermer">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+    <div class="settings__body">
+
+      <!-- Sync GitHub Gist -->
+      <section class="settings__section">
+        <header>
+          <h3>Synchronisation cross-device</h3>
+          <span class="settings__badge" id="sync-status-badge">Désactivée</span>
+        </header>
+        <p class="settings__hint">
+          Vos données restent privées : elles sont stockées dans un <strong>Gist GitHub privé</strong> de votre compte
+          et synchronisées automatiquement avec tous vos appareils.
+        </p>
+        <ol class="settings__steps">
+          <li>
+            Ouvrez <a href="https://github.com/settings/tokens?type=beta&description=Trombinoscope&scopes=gist" target="_blank" rel="noopener">github.com/settings/tokens (Tokens classic)</a>
+            puis « Generate new token (classic) ».
+          </li>
+          <li>Cochez <strong>uniquement</strong> le scope <code>gist</code>. Choisissez une expiration (jamais ou 1 an).</li>
+          <li>Copiez-collez le token ci-dessous.</li>
+        </ol>
+        <label class="field">
+          <span>Personal Access Token (gist scope)</span>
+          <div style="display:flex; gap:6px;">
+            <input id="sync-token-input" type="password" placeholder="ghp_…" autocomplete="off" />
+            <button type="button" class="btn btn--ghost" id="sync-test-btn">Tester</button>
+          </div>
+          <small id="sync-test-result" class="settings__small"></small>
+        </label>
+        <div class="settings__row">
+          <label class="settings__check">
+            <input type="checkbox" id="sync-auto-toggle" checked />
+            <span>Sync automatique à chaque modification</span>
+          </label>
+          <div class="settings__actions">
+            <button type="button" class="btn btn--ghost" id="sync-pull-btn">↓ Récupérer</button>
+            <button type="button" class="btn btn--ghost" id="sync-push-btn">↑ Envoyer</button>
+            <button type="button" class="btn btn--danger" id="sync-disconnect-btn">Déconnecter</button>
+          </div>
+        </div>
+        <small class="settings__small" id="sync-last-info"></small>
+      </section>
+
+      <!-- AI Scan -->
+      <section class="settings__section">
+        <header>
+          <h3>Scan IA (expérimental)</h3>
+          <span class="settings__badge" id="ai-status-badge">Désactivé</span>
+        </header>
+        <p class="settings__hint">
+          Utilise l'<strong>API Claude (Anthropic)</strong> avec recherche web pour trouver
+          automatiquement le site, l'e-mail public, la bio, et compléter le profil.
+          Votre clé reste en local — les requêtes vont directement à api.anthropic.com.
+        </p>
+        <ol class="settings__steps">
+          <li>Récupérez une clé sur <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a></li>
+          <li>Provisionnez quelques crédits (le scan d'1 profil ≈ 0,02-0,05$).</li>
+          <li>Collez la clé ci-dessous.</li>
+        </ol>
+        <label class="field">
+          <span>Clé API Anthropic (sk-ant-…)</span>
+          <div style="display:flex; gap:6px;">
+            <input id="ai-key-input" type="password" placeholder="sk-ant-…" autocomplete="off" />
+            <button type="button" class="btn btn--ghost" id="ai-test-btn">Tester</button>
+          </div>
+          <small id="ai-test-result" class="settings__small"></small>
+        </label>
+        <label class="field">
+          <span>Modèle</span>
+          <select id="ai-model-select">
+            <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (équilibré)</option>
+            <option value="claude-opus-4-7">Claude Opus 4.7 (le plus précis)</option>
+            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (rapide & économique)</option>
+          </select>
+        </label>
+        <div class="settings__actions">
+          <button type="button" class="btn btn--danger" id="ai-disconnect-btn">Effacer la clé</button>
+        </div>
+      </section>
+
+      <!-- Instagram fetch -->
+      <section class="settings__section">
+        <header>
+          <h3>Récupération Instagram</h3>
+          <span class="settings__badge ok">Actif</span>
+        </header>
+        <p class="settings__hint">
+          Le bouton <strong>« Importer Instagram »</strong> de chaque fiche tente de récupérer
+          la photo de profil et les 9 dernières images publiques via plusieurs proxys gratuits.
+          Instagram peut bloquer certaines requêtes — réessayez ou utilisez le drag-and-drop manuel.
+        </p>
+      </section>
+
+    </div>
+  </div>
+</dialog>
+
+<!-- ===== AI Scan result dialog ===== -->
+<dialog id="ai-scan-dialog" class="dialog dialog--ai">
+  <div class="dialog__inner">
+    <header class="dialog__head">
+      <h2 id="ai-scan-title">Scan IA</h2>
+      <button type="button" class="iconbtn" data-close aria-label="Fermer">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+    <div class="ai-scan__body" id="ai-scan-body"></div>
+    <footer class="dialog__foot">
+      <button type="button" class="btn btn--ghost" data-close>Annuler</button>
+      <button type="button" class="btn btn--primary" id="ai-scan-apply">Appliquer la sélection</button>
+    </footer>
   </div>
 </dialog>
 

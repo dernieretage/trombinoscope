@@ -14,6 +14,17 @@ import {
   renderCard, renderRow, renderProfileDetail, applyAvatar,
   toast, confirmDialog,
 } from './ui.js';
+import { fetchInstagramProfilePic, fetchInstagramRecentPosts, fetchImageAsBlob } from './ig.js';
+import {
+  getSyncConfig, setSyncToken, setSyncAutoSync, clearSyncConfig,
+  testConnection as testSyncConnection,
+  pushNow as syncPushNow, pullNow as syncPullNow,
+  setupAutoSync, schedulePush, onSyncStateChange, isSyncReady,
+} from './sync.js';
+import {
+  getAiKey, setAiKey, getAiModel, setAiModel,
+  isAiConfigured, scanProfileWithAi, testAiConnection,
+} from './ai.js';
 
 // ============= STATE =============
 
@@ -50,12 +61,15 @@ const STATE = {
     const seeded = SEED_PROFILES.map(p => ({
       id: uid(),
       name: p.name,
-      profession: p.profession,
+      professions: p.professions || (p.profession ? [p.profession] : []),
       instagram: p.instagram,
       phone: '',
       email: '',
       website: '',
       location: '',
+      rate: '',
+      lastContact: '',
+      bio: '',
       tags: [],
       notes: '',
       status: 'a_contacter',
@@ -65,6 +79,17 @@ const STATE = {
     await bulkSaveProfiles(seeded);
     await setMeta('seeded', true);
     profiles = await getAllProfiles();
+  }
+  // Migration: profession (string) → professions (array)
+  const needsMigration = profiles.some(p => p.profession !== undefined && !p.professions);
+  if (needsMigration) {
+    for (const p of profiles) {
+      if (p.profession !== undefined && !p.professions) {
+        p.professions = p.profession ? [p.profession] : [];
+        delete p.profession;
+        await saveProfile(p);
+      }
+    }
   }
   STATE.profiles = profiles;
 
@@ -85,6 +110,16 @@ const STATE = {
 
   // remove boot veil (setTimeout fallback for unreliable rAF environments)
   setTimeout(() => document.body.classList.add('is-ready'), 50);
+
+  // Sync init (en arrière-plan, ne bloque pas l'UI)
+  setupSyncListeners();
+  setupAutoSync().then(async (ready) => {
+    updateSyncPill();
+    if (ready) {
+      // Récupérer profils maj depuis Gist si nécessaire
+      // (geré dans setupAutoSync via emit 'remote-newer')
+    }
+  }).catch(() => {});
   // PWA
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -151,7 +186,7 @@ function buildProfessionDatalist() {
   const dl = $('#profession-list');
   dl.innerHTML = '';
   const set = new Set(PROFESSIONS);
-  STATE.profiles.forEach(p => p.profession && set.add(p.profession));
+  STATE.profiles.forEach(p => profileProfessions(p).forEach(pr => set.add(pr)));
   for (const p of [...set].sort()) {
     const opt = document.createElement('option');
     opt.value = p;
@@ -173,6 +208,12 @@ function buildProfessionDatalist() {
   }
 }
 
+function allKnownProfessions() {
+  const set = new Set(PROFESSIONS);
+  STATE.profiles.forEach(p => profileProfessions(p).forEach(pr => set.add(pr)));
+  return [...set].sort();
+}
+
 function buildSortSelect() {
   const sel = $('#sort-select');
   sel.value = STATE.filters.sort;
@@ -186,9 +227,15 @@ function buildSortSelect() {
 function professionCounts() {
   const c = {};
   for (const p of STATE.profiles) {
-    if (p.profession) c[p.profession] = (c[p.profession] || 0) + 1;
+    for (const pro of (p.professions || [])) {
+      c[pro] = (c[pro] || 0) + 1;
+    }
   }
   return c;
+}
+
+function profileProfessions(p) {
+  return p.professions || (p.profession ? [p.profession] : []);
 }
 
 // ============= UI HOOKS =============
@@ -259,6 +306,7 @@ function hookUI() {
     if (a === 'copy-emails') return copyEmailsOfFiltered();
     if (a === 'copy-handles') return copyHandlesOfFiltered();
     if (a === 'seed') return doReSeed();
+    if (a === 'settings') return openSettingsDialog();
     if (a === 'shortcuts') return openDialog('shortcuts-dialog');
     if (a === 'reset') return doReset();
   });
@@ -383,7 +431,7 @@ function applyFilters() {
   const q = query.toLowerCase();
   let list = STATE.profiles;
 
-  if (profession !== 'all') list = list.filter(p => p.profession === profession);
+  if (profession !== 'all') list = list.filter(p => profileProfessions(p).includes(profession));
   if (status) list = list.filter(p => p.status === status);
   if (STATE.filters.tag) {
     const t = STATE.filters.tag.toLowerCase();
@@ -392,8 +440,8 @@ function applyFilters() {
   if (q) {
     list = list.filter(p => {
       const blob = [
-        p.name, p.profession, p.instagram, p.email, p.phone,
-        p.location, p.website, p.notes, ...(p.tags || []),
+        p.name, ...(profileProfessions(p)), p.instagram, p.email, p.phone,
+        p.location, p.website, p.bio, p.notes, ...(p.tags || []),
       ].filter(Boolean).join(' ');
       return fuzzyMatch(q, blob);
     });
@@ -410,7 +458,7 @@ function applyFilters() {
     },
     recent: (a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''),
     created: (a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''),
-    profession: (a, b) => (a.profession || '').localeCompare(b.profession || '', 'fr') || (a.name || '').localeCompare(b.name || '', 'fr'),
+    profession: (a, b) => (profileProfessions(a)[0] || '').localeCompare(profileProfessions(b)[0] || '', 'fr') || (a.name || '').localeCompare(b.name || '', 'fr'),
     status: (a, b) => (STATUS_RANK[a.status ?? ''] ?? 4) - (STATUS_RANK[b.status ?? ''] ?? 4) || (a.name || '').localeCompare(b.name || '', 'fr'),
   };
   list = [...list].sort(cmp[sort] || cmp.name);
@@ -486,11 +534,13 @@ async function openProfileDialog(id) {
     onStatusChange: async (st) => {
       profile.status = st;
       await saveProfile(profile);
+      maybeSchedulePush();
       render();
     },
     onNotesChange: async (notes) => {
       profile.notes = notes;
       await saveProfile(profile);
+      maybeSchedulePush();
     },
     onUploadImages: async (files) => {
       await addImagesToProfile(profile, files);
@@ -498,6 +548,12 @@ async function openProfileDialog(id) {
       STATE.imagesByProfile.set(profile.id, imgs);
       openProfileDialog(profile.id);
       render();
+    },
+    onFetchIg: async () => {
+      await importInstagramForProfile(profile);
+    },
+    onAiScan: async () => {
+      await aiScanProfile(profile);
     },
     onDeleteImage: async (key) => {
       await deleteImage(key);
@@ -550,6 +606,7 @@ async function confirmDelete(profile) {
   STATE.imagesByProfile.delete(profile.id);
   buildFilterChips();
   render();
+  maybeSchedulePush();
   toast('Profil supprimé.', { type: 'ok' });
 }
 
@@ -567,10 +624,11 @@ function openEditDialog(profile = null) {
   $('#edit-delete').hidden = !profile;
   $('#edit-title').textContent = profile ? 'Éditer le profil' : 'Nouveau profil';
 
+  // Reset multi-chip professions
+  setMultichipValues('profession-multichip', profile ? profileProfessions(profile) : []);
   if (profile) {
     form.elements.id.value = profile.id;
     form.elements.name.value = profile.name || '';
-    form.elements.profession.value = profile.profession || '';
     form.elements.status.value = profile.status || '';
     form.elements.instagram.value = profile.instagram || '';
     form.elements.phone.value = profile.phone || '';
@@ -613,6 +671,9 @@ function hookEditForm() {
     }
   });
 
+  // Hook multichip pour professions
+  hookMultichip('profession-multichip', () => allKnownProfessions());
+
   // submit
   $('#edit-save').addEventListener('click', async (e) => {
     e.preventDefault();
@@ -622,13 +683,20 @@ function hookEditForm() {
       form.elements.name.focus();
       return;
     }
+    // Récupérer les professions du multichip
+    const professions = getMultichipValues('profession-multichip');
+    if (!professions.length) {
+      toast('Au moins un métier est requis.', { type: 'warn' });
+      $('#profession-multichip .multichip__input').focus();
+      return;
+    }
     const id = data.id || uid();
     const existing = STATE.profiles.find(p => p.id === id);
     const profile = {
       ...(existing || {}),
       id,
       name: data.name.trim(),
-      profession: data.profession.trim(),
+      professions,
       status: data.status || '',
       instagram: parseInstagramHandle(data.instagram),
       phone: data.phone.trim(),
@@ -640,6 +708,7 @@ function hookEditForm() {
       tags: (data.tags || '').split(',').map(t => t.trim()).filter(Boolean),
       notes: data.notes,
     };
+    delete profile.profession; // nettoyer ancien champ
     await saveProfile(profile);
 
     if (existing) {
@@ -659,6 +728,7 @@ function hookEditForm() {
     buildProfessionDatalist();
     render();
     $('#edit-dialog').close();
+    maybeSchedulePush();
     toast(existing ? 'Profil mis à jour.' : 'Profil créé.', { type: 'ok' });
   });
 
@@ -673,6 +743,63 @@ function hookEditForm() {
   function addFiles(files) {
     for (const f of files) pendingFiles.push(f);
     refreshDropzonePreview();
+  }
+}
+
+async function importInstagramForProfile(profile) {
+  if (!profile.instagram) {
+    toast('Ce profil n’a pas de handle Instagram.', { type: 'warn' });
+    return;
+  }
+  const t = toast(`Récupération depuis Instagram @${profile.instagram}…`, { type: 'info', timeout: 0 });
+  try {
+    let added = 0;
+    let errors = [];
+    // 1) Profile pic
+    try {
+      const pic = await fetchInstagramProfilePic(profile.instagram);
+      if (pic?.url) {
+        const blob = await fetchImageAsBlob(pic.url);
+        // On insère en TÊTE des images existantes
+        const existing = await getProfileImages(profile.id);
+        // Décale les indices existants de +1
+        for (let i = existing.length - 1; i >= 0; i--) {
+          await deleteImage(existing[i].key);
+          await saveImage(profile.id, i + 1, existing[i].blob);
+        }
+        await saveImage(profile.id, 0, blob);
+        added++;
+      }
+    } catch (e) { errors.push('photo de profil : ' + e.message); }
+
+    // 2) 9 dernières images
+    try {
+      const posts = await fetchInstagramRecentPosts(profile.instagram, 9);
+      const startIdx = (await getProfileImages(profile.id)).length;
+      for (let i = 0; i < posts.length; i++) {
+        try {
+          const blob = await fetchImageAsBlob(posts[i].url);
+          await saveImage(profile.id, startIdx + i, blob);
+          added++;
+        } catch (e) { /* skip image */ }
+      }
+    } catch (e) { errors.push('posts : ' + e.message); }
+
+    t.dismiss();
+    const imgs = await getProfileImages(profile.id);
+    STATE.imagesByProfile.set(profile.id, imgs);
+    if (added) {
+      profile.updatedAt = new Date().toISOString();
+      await saveProfile(profile);
+      openProfileDialog(profile.id);
+      render();
+      toast(`${added} image${added > 1 ? 's' : ''} importée${added > 1 ? 's' : ''} depuis Instagram${errors.length ? ` (avertissements : ${errors.join(' ; ')})` : ''}.`, { type: 'ok', timeout: 6000 });
+    } else {
+      toast(`Échec de l’import : ${errors.join(' ; ') || 'aucune image accessible'}.`, { type: 'err', timeout: 6000 });
+    }
+  } catch (e) {
+    t.dismiss();
+    toast('Erreur : ' + e.message, { type: 'err' });
   }
 }
 
@@ -754,6 +881,98 @@ function parseBulk(text) {
 }
 
 // ============= EXPORT / IMPORT =============
+
+// ============= MULTICHIP =============
+
+const _multichipState = new Map();
+
+function getMultichipValues(id) {
+  return [..._multichipState.get(id) || []];
+}
+
+function setMultichipValues(id, values) {
+  _multichipState.set(id, [...new Set(values)]);
+  renderMultichip(id);
+}
+
+function renderMultichip(id) {
+  const wrap = document.getElementById(id);
+  if (!wrap) return;
+  const chipsEl = wrap.querySelector('.multichip__chips');
+  chipsEl.innerHTML = '';
+  const values = _multichipState.get(id) || [];
+  for (const v of values) {
+    const chip = document.createElement('span');
+    chip.className = 'multichip__chip';
+    chip.innerHTML = `${escapeHtmlBasic(v)}<button type="button" aria-label="Retirer ${escapeHtmlBasic(v)}" data-remove="${escapeHtmlBasic(v)}">×</button>`;
+    chipsEl.appendChild(chip);
+  }
+}
+
+function escapeHtmlBasic(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function hookMultichip(id, getSuggestions) {
+  const wrap = document.getElementById(id);
+  if (!wrap) return;
+  const input = wrap.querySelector('.multichip__input');
+
+  function addValue(v) {
+    v = (v || '').trim();
+    if (!v) return;
+    const cur = _multichipState.get(id) || [];
+    if (cur.some(x => x.toLowerCase() === v.toLowerCase())) return;
+    _multichipState.set(id, [...cur, v]);
+    renderMultichip(id);
+    input.value = '';
+  }
+
+  function removeLast() {
+    const cur = _multichipState.get(id) || [];
+    if (!cur.length) return;
+    _multichipState.set(id, cur.slice(0, -1));
+    renderMultichip(id);
+  }
+
+  wrap.addEventListener('click', (e) => {
+    const rm = e.target.closest('[data-remove]');
+    if (rm) {
+      const v = rm.dataset.remove;
+      _multichipState.set(id, (_multichipState.get(id) || []).filter(x => x !== v));
+      renderMultichip(id);
+      input.focus();
+      return;
+    }
+    input.focus();
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ',' || e.key === ';') {
+      e.preventDefault();
+      addValue(input.value);
+    } else if (e.key === 'Backspace' && !input.value) {
+      removeLast();
+    }
+  });
+
+  input.addEventListener('blur', () => {
+    if (input.value) addValue(input.value);
+  });
+
+  input.addEventListener('input', () => {
+    // datalist remplie automatiquement par le navigateur
+    const dl = document.getElementById('profession-list');
+    if (dl) {
+      dl.innerHTML = '';
+      for (const s of getSuggestions()) {
+        const opt = document.createElement('option');
+        opt.value = s;
+        dl.appendChild(opt);
+      }
+    }
+  });
+}
 
 async function safeCopy(text) {
   try {
@@ -996,6 +1215,283 @@ function openDialog(id) {
   const dlg = document.getElementById(id);
   if (dlg && !dlg.open) dlg.showModal();
 }
+
+// ============= SYNC =============
+
+function setupSyncListeners() {
+  onSyncStateChange((s) => {
+    updateSyncPill(s);
+    if (s.status === 'remote-newer') {
+      toast('Données distantes plus récentes — voulez-vous les récupérer ?', {
+        type: 'info', timeout: 0,
+        action: { label: 'Récupérer', onClick: async () => {
+          try { await syncPullNow({ replace: true }); STATE.profiles = await getAllProfiles(); buildFilterChips(); render(); toast('Sync : profils mis à jour.', { type: 'ok' }); }
+          catch (e) { toast('Sync échec : ' + e.message, { type: 'err' }); }
+        }},
+      });
+    }
+  });
+}
+
+async function updateSyncPill(s) {
+  const pill = $('#sync-pill');
+  if (!pill) return;
+  const cfg = await getSyncConfig();
+  if (!cfg.token) {
+    pill.classList.add('off');
+    pill.classList.remove('ok', 'syncing', 'err');
+    return;
+  }
+  pill.classList.remove('off');
+  pill.classList.remove('ok', 'syncing', 'err');
+  const status = s?.status || 'idle';
+  if (status === 'pushing' || status === 'pulling') {
+    pill.classList.add('syncing');
+    pill.textContent = status === 'pushing' ? 'Sync ↑' : 'Sync ↓';
+  } else if (status === 'error') {
+    pill.classList.add('err');
+    pill.textContent = 'Sync ✗';
+    pill.title = s.error;
+  } else {
+    pill.classList.add('ok');
+    pill.textContent = 'Sync';
+    pill.title = cfg.lastSync ? 'Dernière sync : ' + new Date(cfg.lastSync).toLocaleString('fr-FR') : 'Synchronisation activée';
+  }
+}
+
+function maybeSchedulePush() {
+  if (isSyncReady()) schedulePush(4000);
+}
+
+// ============= SETTINGS DIALOG =============
+
+let settingsHooked = false;
+async function openSettingsDialog() {
+  const dlg = $('#settings-dialog');
+  if (!settingsHooked) hookSettingsDialog();
+  await refreshSettingsView();
+  if (!dlg.open) dlg.showModal();
+}
+
+function hookSettingsDialog() {
+  settingsHooked = true;
+  const dlg = $('#settings-dialog');
+
+  // SYNC
+  $('#sync-test-btn').addEventListener('click', async () => {
+    const token = $('#sync-token-input').value.trim();
+    const out = $('#sync-test-result');
+    if (!token) { out.textContent = 'Saisissez un token.'; out.className = 'settings__small err'; return; }
+    out.textContent = 'Test en cours…'; out.className = 'settings__small';
+    try {
+      const u = await testSyncConnection(token);
+      out.textContent = `✓ Connecté en tant que @${u.login}. Token enregistré.`;
+      out.className = 'settings__small ok';
+      await setSyncToken(token);
+      await setupAutoSync();
+      updateSyncPill();
+      refreshSettingsView();
+    } catch (e) {
+      out.textContent = '✗ ' + e.message;
+      out.className = 'settings__small err';
+    }
+  });
+
+  $('#sync-auto-toggle').addEventListener('change', async (e) => {
+    await setSyncAutoSync(e.target.checked);
+    if (e.target.checked) await setupAutoSync();
+  });
+
+  $('#sync-pull-btn').addEventListener('click', async () => {
+    try {
+      const ok = await confirmDialog({
+        title: 'Récupérer les données du cloud ?',
+        text: 'Cela remplacera vos profils locaux par ceux du Gist GitHub.',
+        okLabel: 'Récupérer',
+      });
+      if (!ok) return;
+      await syncPullNow({ replace: true });
+      STATE.profiles = await getAllProfiles();
+      STATE.imagesByProfile.clear();
+      for (const p of STATE.profiles) {
+        const imgs = await getProfileImages(p.id);
+        if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
+      }
+      buildFilterChips();
+      render();
+      toast('Profils récupérés depuis le cloud.', { type: 'ok' });
+      refreshSettingsView();
+    } catch (e) { toast('Pull échec : ' + e.message, { type: 'err' }); }
+  });
+
+  $('#sync-push-btn').addEventListener('click', async () => {
+    try {
+      const r = await syncPushNow();
+      toast(`${r.profiles ?? '?'} profils envoyés vers le cloud.`, { type: 'ok' });
+      refreshSettingsView();
+    } catch (e) { toast('Push échec : ' + e.message, { type: 'err' }); }
+  });
+
+  $('#sync-disconnect-btn').addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Déconnecter la synchronisation ?',
+      text: 'Vos données locales restent en place. Le token sera supprimé du navigateur.',
+      okLabel: 'Déconnecter',
+    });
+    if (!ok) return;
+    await clearSyncConfig();
+    updateSyncPill();
+    refreshSettingsView();
+    toast('Sync déconnectée.', { type: 'ok' });
+  });
+
+  // AI
+  $('#ai-test-btn').addEventListener('click', async () => {
+    const key = $('#ai-key-input').value.trim();
+    const model = $('#ai-model-select').value;
+    const out = $('#ai-test-result');
+    if (!key) { out.textContent = 'Saisissez une clé.'; out.className = 'settings__small err'; return; }
+    out.textContent = 'Test en cours…'; out.className = 'settings__small';
+    try {
+      await testAiConnection(key, model);
+      await setAiKey(key);
+      await setAiModel(model);
+      out.textContent = `✓ Connexion réussie (modèle ${model}). Clé enregistrée.`;
+      out.className = 'settings__small ok';
+      refreshSettingsView();
+    } catch (e) {
+      out.textContent = '✗ ' + e.message;
+      out.className = 'settings__small err';
+    }
+  });
+
+  $('#ai-model-select').addEventListener('change', async (e) => {
+    await setAiModel(e.target.value);
+  });
+
+  $('#ai-disconnect-btn').addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Effacer la clé API Anthropic ?',
+      text: 'La fonction de scan IA sera désactivée. Vos profils restent intacts.',
+      okLabel: 'Effacer',
+    });
+    if (!ok) return;
+    await setAiKey(null);
+    refreshSettingsView();
+    toast('Clé IA effacée.', { type: 'ok' });
+  });
+}
+
+async function refreshSettingsView() {
+  const cfg = await getSyncConfig();
+  $('#sync-token-input').value = cfg.token || '';
+  $('#sync-auto-toggle').checked = cfg.autoSync;
+  const badge = $('#sync-status-badge');
+  badge.textContent = cfg.token ? 'Activée' : 'Désactivée';
+  badge.classList.toggle('ok', !!cfg.token);
+  $('#sync-last-info').textContent = cfg.lastSync ? `Dernière sync : ${new Date(cfg.lastSync).toLocaleString('fr-FR')}` : '';
+
+  const aiKey = await getAiKey();
+  const aiModel = await getAiModel();
+  $('#ai-key-input').value = aiKey || '';
+  $('#ai-model-select').value = aiModel;
+  const aiBadge = $('#ai-status-badge');
+  aiBadge.textContent = aiKey ? 'Configuré' : 'Désactivé';
+  aiBadge.classList.toggle('ok', !!aiKey);
+}
+
+// ============= AI SCAN ON PROFILE =============
+
+let lastAiResult = null;
+let lastAiProfile = null;
+
+async function aiScanProfile(profile) {
+  if (!await isAiConfigured()) {
+    toast('Configurez votre clé API Anthropic dans les Réglages d’abord.', { type: 'warn',
+      action: { label: 'Réglages', onClick: () => openSettingsDialog() } });
+    return;
+  }
+  const dlg = $('#ai-scan-dialog');
+  const body = $('#ai-scan-body');
+  $('#ai-scan-title').textContent = `Scan IA — ${profile.name || profile.instagram}`;
+  body.innerHTML = `
+    <div class="ai-scan__loading">
+      <div class="spinner"></div>
+      <div>Recherche d'informations publiques en cours…</div>
+      <small style="color: var(--text-faint); margin-top: 8px; display: block;">L'IA effectue jusqu'à 5 recherches web. Cela prend 10 à 30 secondes.</small>
+    </div>`;
+  if (!dlg.open) dlg.showModal();
+
+  try {
+    const result = await scanProfileWithAi(profile);
+    lastAiResult = result;
+    lastAiProfile = profile;
+    renderAiResult(profile, result);
+  } catch (e) {
+    body.innerHTML = `<div class="ai-scan__loading"><div style="color: var(--danger); font-weight: 500;">Erreur</div><div style="color: var(--text-muted); margin-top: 8px;">${escapeHtmlBasic(e.message)}</div></div>`;
+  }
+}
+
+function renderAiResult(profile, result) {
+  const body = $('#ai-scan-body');
+  const fields = [
+    { key: 'website', label: 'Site / Portfolio', current: profile.website },
+    { key: 'email', label: 'E-mail', current: profile.email },
+    { key: 'phone', label: 'Téléphone', current: profile.phone },
+    { key: 'location', label: 'Localisation', current: profile.location },
+    { key: 'bio', label: 'Bio', current: profile.bio },
+    { key: 'professions', label: 'Métier(s)', current: (profile.professions || []).join(', '), isArray: true },
+    { key: 'tags', label: 'Tags', current: (profile.tags || []).join(', '), isArray: true },
+  ];
+  const conf = (result.confidence || 'low').toLowerCase();
+  let html = `<div style="margin-bottom: 12px; font-size: 13px; color: var(--text-muted);">Confiance : <span class="ai-scan__confidence ${conf}">${conf}</span></div>`;
+  for (const f of fields) {
+    const val = result[f.key];
+    const valStr = f.isArray ? (Array.isArray(val) ? val.join(', ') : (val || '')) : (val || '');
+    const isEmpty = !valStr || valStr === 'null';
+    const isDifferent = !isEmpty && valStr !== f.current;
+    const checked = isDifferent ? 'checked' : '';
+    html += `
+      <div class="ai-scan__field">
+        <input type="checkbox" class="ai-scan__check" data-field="${f.key}" data-value="${escapeHtmlBasic(valStr)}" ${checked} ${isEmpty ? 'disabled' : ''} />
+        <div class="ai-scan__label">${f.label}</div>
+        <div class="ai-scan__value ${isEmpty ? 'empty' : ''}">${isEmpty ? '— rien trouvé —' : escapeHtmlBasic(valStr)}${f.current ? `<br><small style="color: var(--text-faint);">Actuel : ${escapeHtmlBasic(f.current)}</small>` : ''}</div>
+      </div>`;
+  }
+  if (result.sources?.length) {
+    html += `<div class="ai-scan__sources">Sources : ${result.sources.map(s => `<a href="${s}" target="_blank" rel="noopener">${new URL(s).hostname.replace('www.', '')}</a>`).join('')}</div>`;
+  }
+  body.innerHTML = html;
+}
+
+document.addEventListener('click', async (e) => {
+  if (e.target.id === 'ai-scan-apply') {
+    if (!lastAiProfile || !lastAiResult) return;
+    const dlg = $('#ai-scan-dialog');
+    const checks = dlg.querySelectorAll('.ai-scan__check:checked');
+    const updates = {};
+    for (const c of checks) {
+      const f = c.dataset.field;
+      const v = c.dataset.value;
+      if (f === 'professions' || f === 'tags') {
+        updates[f] = v.split(',').map(s => s.trim()).filter(Boolean);
+      } else {
+        updates[f] = v;
+      }
+    }
+    Object.assign(lastAiProfile, updates);
+    await saveProfile(lastAiProfile);
+    buildFilterChips();
+    buildProfessionDatalist();
+    render();
+    if ($('#profile-dialog').open && STATE.current?.id === lastAiProfile.id) {
+      openProfileDialog(lastAiProfile.id);
+    }
+    dlg.close();
+    toast(`${Object.keys(updates).length} champ${Object.keys(updates).length > 1 ? 's' : ''} mis à jour depuis le scan IA.`, { type: 'ok' });
+    maybeSchedulePush();
+  }
+});
 
 // ============= STATS =============
 
