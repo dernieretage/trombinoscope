@@ -688,8 +688,12 @@ mark.hl { background: color-mix(in oklab, var(--accent) 40%, transparent); color
 .row__status { font-size: 11px; }
 
 @media (max-width: 760px) {
-  .row { grid-template-columns: 44px 1fr auto; }
-  .row__tags, .row__contact { display: none; }
+  .row { grid-template-columns: 44px 1fr auto; gap: 10px; padding: 8px 10px; }
+  .row__tags { display: none; }
+  .row__contact { display: none; }
+  .row__name { font-size: 14px; }
+  .row__meta { font-size: 11px; }
+  .row__avatar { width: 40px; height: 40px; font-size: 16px; }
 }
 
 /* ============================================================
@@ -1170,7 +1174,12 @@ dialog[open] .dialog__inner {
   *, *::before, *::after {
     animation-duration: .001ms !important;
     transition-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
   }
+  .card { opacity: 1 !important; transform: none !important; }
+  .row { opacity: 1 !important; transform: none !important; }
+  .card__avatar { transition: none !important; }
+  .card:hover .card__avatar { transform: none !important; }
 }
 
 /* ---- Print stylesheet ---- */
