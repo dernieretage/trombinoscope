@@ -1,9 +1,13 @@
-// Mode "Scan IA" expérimental — utilise l'API Claude pour rechercher
-// automatiquement les infos publiques d'une personne (site, mail pro, bio).
+// Mode "Scan IA" — utilise l'API Claude (Anthropic) pour extraire les infos publiques.
 //
-// IMPORTANT : la clé API Anthropic est stockée localement dans IndexedDB.
-// Elle n'est JAMAIS envoyée à un autre service que api.anthropic.com.
-// Toutes les requêtes vont directement du navigateur vers Anthropic.
+// Stratégie en 2 étapes (plus fiable que d'utiliser web_search côté Anthropic
+// qui n'est pas toujours dispo en mode browser direct) :
+//   1) Recherche DuckDuckGo via r.jina.ai pour trouver site, mentions publiques
+//   2) Récupération du contenu des pages trouvées via r.jina.ai
+//   3) Envoi du contenu à Claude pour extraction JSON structurée
+//
+// La clé API Anthropic est stockée localement, jamais envoyée ailleurs que
+// vers api.anthropic.com.
 
 import { getMeta, setMeta } from './store.js';
 
@@ -11,6 +15,7 @@ const META_KEY = 'ai_anthropic_key';
 const META_MODEL = 'ai_model';
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+const JINA_BASE = 'https://r.jina.ai/';
 
 export async function getAiKey() { return await getMeta(META_KEY); }
 export async function setAiKey(key) { await setMeta(META_KEY, key || null); }
@@ -22,45 +27,104 @@ export async function isAiConfigured() {
   return !!k;
 }
 
-// ============= APPEL CLAUDE AVEC WEB SEARCH =============
+// ============= ÉTAPE 1 : RECHERCHE WEB (côté navigateur) =============
 
-export async function scanProfileWithAi(profile) {
+async function jinaGet(url) {
+  const r = await fetch(JINA_BASE + url, { headers: { 'X-Return-Format': 'markdown' } });
+  if (!r.ok) throw new Error(`Jina ${r.status}`);
+  return r.text();
+}
+
+async function searchWebForProfile({ name, instagram, professions }) {
+  const queries = [
+    `${name} ${instagram ? '@' + instagram : ''} ${professions.join(' ')}`,
+    `${name} contact email site web`,
+    instagram ? `instagram.com/${instagram} site personnel` : null,
+  ].filter(Boolean);
+
+  const findings = [];
+  for (const q of queries.slice(0, 2)) { // max 2 requêtes pour garder vite
+    try {
+      const md = await jinaGet(`https://duckduckgo.com/?q=${encodeURIComponent(q)}&ia=web`);
+      // Extraire les URLs de résultats
+      const urls = [...new Set(md.match(/https?:\/\/[^\s\)\]"<>]{8,200}/g) || [])]
+        .filter(u => !/duckduckgo|yandex|bing|google|youtube|instagram\.com\/p|instagram\.com\/reel|instagram\.com\/p\//i.test(u))
+        .filter(u => !/\.png|\.jpg|\.gif|\.webp|\.svg|\.ico/i.test(u))
+        .slice(0, 3);
+      findings.push({ query: q, urls });
+    } catch (e) { /* skip */ }
+  }
+  return findings;
+}
+
+async function fetchPagesContent(urls, maxChars = 2000) {
+  const out = [];
+  for (const u of urls.slice(0, 5)) {
+    try {
+      const md = await jinaGet(u);
+      out.push({ url: u, content: md.substring(0, maxChars) });
+    } catch (e) { /* skip */ }
+  }
+  return out;
+}
+
+// ============= ÉTAPE 2 : ANALYSE PAR CLAUDE =============
+
+export async function scanProfileWithAi(profile, onProgress = () => {}) {
   const key = await getAiKey();
-  if (!key) throw new Error('Clé API Anthropic non configurée.');
+  if (!key) throw new Error('Clé API Anthropic non configurée. Ouvrez Réglages.');
   const model = await getAiModel();
 
   const fullName = profile.name || '';
   const handle = profile.instagram || '';
   const knownPros = (profile.professions || []).join(', ');
 
-  const prompt = `Je cherche les coordonnées professionnelles publiques de cette personne pour un répertoire de production audiovisuelle.
+  // Étape 1 : recherche web
+  onProgress({ message: 'Recherche web…' });
+  const findings = await searchWebForProfile({ name: fullName, instagram: handle, professions: profile.professions || [] });
 
-PERSONNE :
+  // Étape 2 : récupérer le contenu des meilleures URLs
+  const allUrls = [...new Set(findings.flatMap(f => f.urls))];
+  onProgress({ message: `Lecture de ${Math.min(allUrls.length, 4)} pages…` });
+  const pages = await fetchPagesContent(allUrls, 1800);
+
+  // Étape 3 : Demander à Claude d'extraire
+  onProgress({ message: 'Analyse par Claude…' });
+
+  let context = '';
+  if (handle) context += `Instagram: https://www.instagram.com/${handle}/\n`;
+  for (const p of pages) {
+    context += `\n--- SOURCE: ${p.url} ---\n${p.content}\n`;
+  }
+
+  const prompt = `Tu es un assistant de recherche pour un répertoire de production audiovisuelle.
+
+PROFIL CIBLE :
 - Nom : ${fullName}
-- Instagram : @${handle}
+- Instagram : @${handle || '(inconnu)'}
 - Métier(s) connu(s) : ${knownPros || 'inconnu'}
 
-OBJECTIF : utilise web_search pour trouver les informations PUBLIQUES suivantes (uniquement si tu les trouves de façon vérifiable et non spéculative) :
-- Site web personnel ou portfolio (URL complète)
-- E-mail professionnel public
-- Téléphone professionnel public (rare, ne pas inventer)
-- Localisation (ville/pays)
-- Bio courte (1-3 phrases factuelles)
-- Métier(s) confirmés (par exemple ajouter "Directeur·rice artistique" si trouvé)
-- Tags pertinents (ex: "mode", "clip", "documentaire")
+CONTENU TROUVÉ EN LIGNE (extraits de pages publiques) :
+${context || '(aucun résultat trouvé)'}
 
-CONSIGNES STRICTES :
-1. N'invente JAMAIS de données. Si tu ne trouves pas, écris null.
-2. Vérifie via plusieurs sources si possible.
-3. Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, dans ce format :
+OBJECTIF : extraire UNIQUEMENT les informations publiques vérifiables sur cette personne.
+
+INSTRUCTIONS STRICTES :
+1. N'invente JAMAIS. Si tu n'es pas certain à 90%+, mets null.
+2. Vérifie que les infos correspondent BIEN à cette personne (pas un homonyme).
+3. Pour la bio : 1 à 3 phrases factuelles SEULEMENT (pas de remplissage).
+4. Pour les sources : cite seulement les URLs qui ont vraiment fourni l'info.
+
+Réponds UNIQUEMENT avec un objet JSON valide, sans markdown, sans texte autour, dans ce format exact :
+
 {
   "website": "https://... ou null",
   "email": "..@.. ou null",
-  "phone": "... ou null",
+  "phone": "+33... ou null",
   "location": "Ville, Pays ou null",
   "bio": "phrase factuelle ou null",
   "professions": ["...", "..."],
-  "tags": ["...", "..."],
+  "tags": ["mot-clé1", "mot-clé2"],
   "confidence": "low|medium|high",
   "sources": ["url1", "url2"]
 }`;
@@ -69,7 +133,6 @@ CONSIGNES STRICTES :
     model,
     max_tokens: 1500,
     messages: [{ role: 'user', content: prompt }],
-    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
   };
 
   const res = await fetch(ANTHROPIC_URL, {
@@ -85,32 +148,37 @@ CONSIGNES STRICTES :
 
   if (res.status === 401) throw new Error('Clé API invalide.');
   if (res.status === 429) throw new Error('Quota dépassé — réessayez dans quelques minutes.');
+  if (res.status === 400) {
+    const txt = await res.text();
+    throw new Error('Requête invalide : ' + txt.substring(0, 200));
+  }
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
     throw new Error(`Erreur API ${res.status} : ${txt.slice(0, 200)}`);
   }
 
   const data = await res.json();
-  // Extraction du dernier bloc texte
   const blocks = data.content || [];
   let text = '';
-  for (const b of blocks) {
-    if (b.type === 'text') text += b.text + '\n';
-  }
+  for (const b of blocks) if (b.type === 'text') text += b.text + '\n';
 
-  // Parser le JSON de la réponse
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('Réponse IA non parsable. Réessayez.');
   let result;
   try {
     result = JSON.parse(match[0]);
   } catch (e) {
-    throw new Error('JSON invalide retourné par l’IA.');
+    throw new Error('JSON invalide retourné par l\'IA.');
   }
 
-  // Nettoyer les valeurs null littérales
+  // Nettoyer null littéraux
   for (const k of Object.keys(result)) {
     if (result[k] === 'null' || result[k] === '') result[k] = null;
+  }
+
+  // Ajouter les sources des findings au cas où l'IA ne les liste pas
+  if (!result.sources?.length && pages.length) {
+    result.sources = pages.map(p => p.url).slice(0, 3);
   }
 
   return result;

@@ -14,7 +14,7 @@ import {
   renderCard, renderRow, renderProfileDetail, applyAvatar,
   toast, confirmDialog,
 } from './ui.js';
-import { fetchInstagramProfilePic, fetchInstagramRecentPosts, fetchImageAsBlob } from './ig.js';
+import { fetchInstagramProfile, fetchImageAsBlob } from './ig.js';
 import {
   getSyncConfig, setSyncToken, setSyncAutoSync, clearSyncConfig,
   testConnection as testSyncConnection,
@@ -115,10 +115,7 @@ const STATE = {
   setupSyncListeners();
   setupAutoSync().then(async (ready) => {
     updateSyncPill();
-    if (ready) {
-      // Récupérer profils maj depuis Gist si nécessaire
-      // (geré dans setupAutoSync via emit 'remote-newer')
-    }
+    updateSaveButton();
   }).catch(() => {});
   // PWA
   if ('serviceWorker' in navigator) {
@@ -303,6 +300,7 @@ function hookUI() {
     if (a === 'export-csv') return doExportCsv();
     if (a === 'import') return triggerImport();
     if (a === 'bulk-import') return openBulkDialog();
+    if (a === 'bulk-ig-photos') return bulkImportInstagramPhotos();
     if (a === 'copy-emails') return copyEmailsOfFiltered();
     if (a === 'copy-handles') return copyHandlesOfFiltered();
     if (a === 'seed') return doReSeed();
@@ -367,6 +365,24 @@ function hookUI() {
 
   // paste images globally (when not typing in a non-image field)
   document.addEventListener('paste', onPaste);
+
+  // bouton "Sauvegarder maintenant"
+  $('#save-btn').addEventListener('click', async () => {
+    try {
+      await syncPushNow();
+      toast('Sauvegarde réussie.', { type: 'ok', timeout: 2500 });
+    } catch (e) {
+      toast('Sauvegarde échouée : ' + e.message, { type: 'err', timeout: 5000 });
+    }
+  });
+
+  // raccourci clavier ⌘S / Ctrl+S
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 's' && !$('#edit-dialog').open) {
+      e.preventDefault();
+      $('#save-btn')?.click();
+    }
+  });
 
   // back-to-top
   const totop = $('#totop');
@@ -746,61 +762,121 @@ function hookEditForm() {
   }
 }
 
-async function importInstagramForProfile(profile) {
+async function importInstagramForProfile(profile, { silent = false } = {}) {
   if (!profile.instagram) {
-    toast('Ce profil n’a pas de handle Instagram.', { type: 'warn' });
-    return;
+    if (!silent) toast('Ce profil n’a pas de handle Instagram.', { type: 'warn' });
+    return { added: 0, errors: ['No handle'] };
   }
-  const t = toast(`Récupération depuis Instagram @${profile.instagram}…`, { type: 'info', timeout: 0 });
+  let progressToast = null;
+  if (!silent) {
+    progressToast = toast(`@${profile.instagram} : démarrage…`, { type: 'info', timeout: 0 });
+  }
   try {
     let added = 0;
-    let errors = [];
-    // 1) Profile pic
-    try {
-      const pic = await fetchInstagramProfilePic(profile.instagram);
-      if (pic?.url) {
-        const blob = await fetchImageAsBlob(pic.url);
-        // On insère en TÊTE des images existantes
-        const existing = await getProfileImages(profile.id);
-        // Décale les indices existants de +1
-        for (let i = existing.length - 1; i >= 0; i--) {
-          await deleteImage(existing[i].key);
-          await saveImage(profile.id, i + 1, existing[i].blob);
+    const result = await fetchInstagramProfile(profile.instagram, {
+      onProgress: ({ message }) => {
+        if (progressToast && message) {
+          progressToast.dismiss();
+          progressToast = toast(`@${profile.instagram} : ${message}`, { type: 'info', timeout: 0 });
         }
-        await saveImage(profile.id, 0, blob);
+      },
+    });
+
+    // Téléchargement des blobs (profile pic en premier si disponible, puis posts)
+    const newImgsToInsert = [];
+    if (result.profilePic?.url) {
+      try {
+        const blob = await fetchImageAsBlob(result.profilePic.url);
+        newImgsToInsert.push(blob);
+      } catch (e) { result.errors.push('blob profile-pic : ' + e.message); }
+    }
+    for (const post of result.posts) {
+      try {
+        const blob = await fetchImageAsBlob(post.url);
+        newImgsToInsert.push(blob);
+      } catch (e) { /* skip */ }
+    }
+
+    if (newImgsToInsert.length) {
+      // Remplacer toutes les images existantes (on est en mode "import")
+      await deleteProfileImages(profile.id);
+      for (let i = 0; i < newImgsToInsert.length; i++) {
+        await saveImage(profile.id, i, newImgsToInsert[i]);
         added++;
       }
-    } catch (e) { errors.push('photo de profil : ' + e.message); }
+    } else {
+      result.errors.push('aucune image téléchargée');
+    }
 
-    // 2) 9 dernières images
-    try {
-      const posts = await fetchInstagramRecentPosts(profile.instagram, 9);
-      const startIdx = (await getProfileImages(profile.id)).length;
-      for (let i = 0; i < posts.length; i++) {
-        try {
-          const blob = await fetchImageAsBlob(posts[i].url);
-          await saveImage(profile.id, startIdx + i, blob);
-          added++;
-        } catch (e) { /* skip image */ }
-      }
-    } catch (e) { errors.push('posts : ' + e.message); }
+    // Mise à jour bio si vide
+    if (result.bio && !profile.bio) profile.bio = result.bio;
 
-    t.dismiss();
+    progressToast?.dismiss();
     const imgs = await getProfileImages(profile.id);
     STATE.imagesByProfile.set(profile.id, imgs);
+
     if (added) {
       profile.updatedAt = new Date().toISOString();
       await saveProfile(profile);
-      openProfileDialog(profile.id);
-      render();
-      toast(`${added} image${added > 1 ? 's' : ''} importée${added > 1 ? 's' : ''} depuis Instagram${errors.length ? ` (avertissements : ${errors.join(' ; ')})` : ''}.`, { type: 'ok', timeout: 6000 });
-    } else {
-      toast(`Échec de l’import : ${errors.join(' ; ') || 'aucune image accessible'}.`, { type: 'err', timeout: 6000 });
+      if (!silent) {
+        if ($('#profile-dialog').open && STATE.current?.id === profile.id) openProfileDialog(profile.id);
+        render();
+        const errMsg = result.errors.length ? ` (${result.errors.length} avertissement${result.errors.length > 1 ? 's' : ''})` : '';
+        toast(`@${profile.instagram} : ${added} image${added > 1 ? 's' : ''} importée${added > 1 ? 's' : ''}${errMsg}.`, { type: 'ok', timeout: 5000 });
+      }
+      maybeSchedulePush();
+    } else if (!silent) {
+      toast(`@${profile.instagram} : aucune image récupérée. ${result.errors.join(' ; ')}`, { type: 'err', timeout: 6000 });
     }
+    return { added, errors: result.errors };
   } catch (e) {
-    t.dismiss();
-    toast('Erreur : ' + e.message, { type: 'err' });
+    progressToast?.dismiss();
+    if (!silent) toast(`@${profile.instagram} : ${e.message}`, { type: 'err' });
+    return { added: 0, errors: [e.message] };
   }
+}
+
+async function bulkImportInstagramPhotos() {
+  // Profils avec handle IG mais sans image
+  const targets = STATE.profiles.filter(p => p.instagram && !STATE.imagesByProfile.get(p.id)?.length);
+  if (!targets.length) {
+    toast('Tous les profils Instagram ont déjà au moins une image. Rien à faire.', { type: 'ok' });
+    return;
+  }
+
+  const ok = await confirmDialog({
+    title: `Importer les photos Instagram pour ${targets.length} profil${targets.length > 1 ? 's' : ''} ?`,
+    text: `Cela peut prendre 30 sec à 2 min. Les services tiers ont des limites de débit. ` +
+          `Vous pouvez fermer cet onglet, le travail reprendra à la prochaine ouverture.`,
+    okLabel: 'Lancer',
+    danger: false,
+  });
+  if (!ok) return;
+
+  const persist = toast(`Bulk IG : 0 / ${targets.length}…`, { type: 'info', timeout: 0 });
+  let done = 0, success = 0, totalImages = 0;
+
+  for (const p of targets) {
+    try {
+      const r = await importInstagramForProfile(p, { silent: true });
+      if (r.added > 0) {
+        success++;
+        totalImages += r.added;
+      }
+    } catch (e) { /* continue */ }
+    done++;
+    persist.dismiss();
+    const t = toast(`Bulk IG : ${done} / ${targets.length} (${success} OK, ${totalImages} images)`, { type: 'info', timeout: 0 });
+    Object.assign(persist, t); // remplace référence pour le prochain dismiss
+    persist.dismiss = t.dismiss;
+    // throttle pour éviter rate-limiting
+    await new Promise(r => setTimeout(r, 800));
+  }
+
+  persist.dismiss();
+  render();
+  toast(`Bulk IG terminé : ${success}/${targets.length} profils enrichis, ${totalImages} images au total.`, { type: 'ok', timeout: 6000 });
+  maybeSchedulePush();
 }
 
 async function addImagesToProfile(profile, files) {
@@ -1219,8 +1295,32 @@ function openDialog(id) {
 // ============= SYNC =============
 
 function setupSyncListeners() {
-  onSyncStateChange((s) => {
+  onSyncStateChange(async (s) => {
     updateSyncPill(s);
+    const btn = $('#save-btn');
+    if (btn) {
+      btn.classList.remove('is-dirty', 'is-syncing', 'is-error', 'is-saved');
+      const label = btn.querySelector('.savebtn__label');
+      if (s.status === 'pushing') {
+        btn.classList.add('is-syncing');
+        if (label) label.textContent = 'Sauvegarde…';
+      } else if (s.status === 'pulling') {
+        btn.classList.add('is-syncing');
+        if (label) label.textContent = 'Sync…';
+      } else if (s.status === 'error') {
+        btn.classList.add('is-error');
+        if (label) label.textContent = 'Erreur';
+        btn.title = 'Erreur : ' + s.error;
+      } else if (s.status === 'idle' && s.lastSync) {
+        markClean();
+        btn.classList.add('is-saved');
+        if (label) label.textContent = 'Sauvegardé';
+        // Retour à l'état "saved" puis fade out
+        setTimeout(() => {
+          if (!dirtyState) updateSaveButton();
+        }, 3000);
+      }
+    }
     if (s.status === 'remote-newer') {
       toast('Données distantes plus récentes — voulez-vous les récupérer ?', {
         type: 'info', timeout: 0,
@@ -1260,7 +1360,38 @@ async function updateSyncPill(s) {
 }
 
 function maybeSchedulePush() {
-  if (isSyncReady()) schedulePush(4000);
+  if (isSyncReady()) {
+    schedulePush(2500);
+    markDirty();
+  }
+}
+
+// ============= SAVE BUTTON STATE =============
+
+let dirtyState = false;
+
+function markDirty() {
+  dirtyState = true;
+  updateSaveButton();
+}
+function markClean() {
+  dirtyState = false;
+  updateSaveButton();
+}
+async function updateSaveButton() {
+  const btn = $('#save-btn');
+  if (!btn) return;
+  const cfg = await getSyncConfig();
+  if (!cfg.token) {
+    btn.hidden = true;
+    return;
+  }
+  btn.hidden = false;
+  btn.classList.remove('is-dirty', 'is-syncing', 'is-error', 'is-saved');
+  const label = btn.querySelector('.savebtn__label');
+  if (dirtyState) { btn.classList.add('is-dirty'); if (label) label.textContent = 'Sauvegarder'; }
+  else if (cfg.lastSync) { btn.classList.add('is-saved'); if (label) label.textContent = 'Sauvegardé'; }
+  else { if (label) label.textContent = 'Sauvegarder'; }
 }
 
 // ============= SETTINGS DIALOG =============
@@ -1423,7 +1554,10 @@ async function aiScanProfile(profile) {
   if (!dlg.open) dlg.showModal();
 
   try {
-    const result = await scanProfileWithAi(profile);
+    const result = await scanProfileWithAi(profile, ({ message }) => {
+      const mEl = body.querySelector('.ai-scan__loading > div:last-of-type');
+      if (mEl) mEl.textContent = message;
+    });
     lastAiResult = result;
     lastAiProfile = profile;
     renderAiResult(profile, result);
