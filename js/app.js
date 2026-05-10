@@ -359,7 +359,12 @@ async function doCloudPullAndRefresh({ silent = false, force = false, source = '
       window.__lastCloudPullAt = Date.now();
       updateRefreshIndicator();
       const prefix = source === 'boot' ? '✓ Cloud' : '↻ Cloud mis à jour';
-      toast(`${prefix} : ${r.profiles} profils + ${r.images} images.`, { type: 'ok', timeout: 4000 });
+      // Si on a hit le quota IDB (Safari Privée), prévenir l'user que c'est session-only
+      if (window.__idbQuotaHit) {
+        toast(`${prefix} : ${r.profiles} profils + ${r.images} images (mode navigation privée — photos visibles cette session uniquement).`, { type: 'info', timeout: 7000 });
+      } else {
+        toast(`${prefix} : ${r.profiles} profils + ${r.images} images.`, { type: 'ok', timeout: 4000 });
+      }
       return r;
     }
     // Pas de changement détecté : juste mettre à jour le timestamp

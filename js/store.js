@@ -139,12 +139,25 @@ export async function getImage(key) {
   return reqToPromise(store.get(key));
 }
 
+// Fallback in-memory image cache (utilisé quand IDB est plein/refuse,
+// notamment en navigation privée Safari). Vit le temps de la session.
+const memoryImages = new Map(); // profileId -> [imgRecord, ...]
+export function setMemoryImage(profileId, index, blob, type) {
+  const key = `${profileId}::${index}`;
+  const list = memoryImages.get(profileId) || [];
+  const filtered = list.filter(it => it.key !== key);
+  filtered.push({ key, profileId, index, blob, type, size: blob.size, addedAt: Date.now(), inMemory: true });
+  filtered.sort((a, b) => a.index - b.index);
+  memoryImages.set(profileId, filtered);
+}
+export function clearMemoryImages() { memoryImages.clear(); }
+
 export async function getProfileImages(profileId) {
   const store = await tx(STORE_IMAGES);
   const range = IDBKeyRange.bound(`${profileId}::`, `${profileId}::￿`);
   const req = store.openCursor(range);
   const items = [];
-  return new Promise((resolve) => {
+  const idbResult = await new Promise((resolve) => {
     req.onsuccess = () => {
       const cursor = req.result;
       if (cursor) {
@@ -155,7 +168,18 @@ export async function getProfileImages(profileId) {
         resolve(items);
       }
     };
+    req.onerror = () => resolve([]);
   });
+  // Fusionner avec le cache mémoire (si une image n'est qu'en mémoire, on l'ajoute)
+  const mem = memoryImages.get(profileId);
+  if (mem?.length) {
+    const idbKeys = new Set(idbResult.map(it => it.key));
+    for (const m of mem) {
+      if (!idbKeys.has(m.key)) idbResult.push(m);
+    }
+    idbResult.sort((a, b) => a.index - b.index);
+  }
+  return idbResult;
 }
 
 export async function deleteImage(key) {
@@ -330,32 +354,73 @@ export async function importAllChunked(filesByName, { replace = true } = {}) {
     totalProfiles = manifest.profiles.length;
   }
 
-  // Helper qui save une liste d'images (toutes les conversions blob FAITES avant la tx)
+  // Helper qui save une liste d'images. Robuste aux quotas IndexedDB
+  // (Safari Privée : ~1MB de limite). Sur quota, fallback en mémoire pour
+  // que les photos s'affichent quand même (mais perdues à la fermeture).
   async function saveImageBatch(rawImgs) {
     if (!rawImgs.length) return 0;
-    // Convertir TOUS les blobs en parallèle AVANT d'ouvrir la transaction
+    let savedCount = 0;
+    let memoryFallbackCount = 0;
+    let quotaHit = false;
+    // Convertir tous les blobs en parallèle (parsing CPU)
     const records = await Promise.all(rawImgs.map(async (img) => {
-      const blob = await base64ToBlob(img.data, img.type);
-      return { key: img.key, profileId: img.profileId, index: img.index, blob, type: img.type, size: blob.size, addedAt: Date.now() };
-    }));
-    // Maintenant tout est synchrone : on ouvre une seule transaction
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      let t;
       try {
-        t = db.transaction(STORE_IMAGES, 'readwrite');
-      } catch (e) { return reject(e); }
-      const store = t.objectStore(STORE_IMAGES);
-      try {
-        for (const rec of records) store.put(rec);
+        const blob = await base64ToBlob(img.data, img.type);
+        return { key: img.key, profileId: img.profileId, index: img.index, blob, type: img.type, size: blob.size, addedAt: Date.now() };
       } catch (e) {
-        try { t.abort(); } catch {}
-        return reject(e);
+        console.warn('[store] base64 decode échoué:', img.key, e.message);
+        return null;
       }
-      t.oncomplete = () => resolve(records.length);
-      t.onerror = () => reject(t.error);
-      t.onabort = () => reject(t.error || new Error('Transaction abortée'));
-    });
+    }));
+    const validRecords = records.filter(Boolean);
+    if (!validRecords.length) return 0;
+
+    // Save par lots de 5 pour limiter l'impact d'une transaction qui dépasse
+    // le quota (Safari Privée plante TOUTE la transaction sur quota).
+    const BATCH = 5;
+    const db = await openDB();
+    for (let i = 0; i < validRecords.length; i += BATCH) {
+      const slice = validRecords.slice(i, i + BATCH);
+      if (quotaHit) {
+        // Une fois le quota atteint, on stocke uniquement en mémoire
+        // (pas la peine de réessayer chaque batch).
+        for (const rec of slice) setMemoryImage(rec.profileId, rec.index, rec.blob, rec.type);
+        memoryFallbackCount += slice.length;
+        continue;
+      }
+      try {
+        await new Promise((resolve, reject) => {
+          let t;
+          try { t = db.transaction(STORE_IMAGES, 'readwrite'); }
+          catch (e) { return reject(e); }
+          const store = t.objectStore(STORE_IMAGES);
+          try { for (const rec of slice) store.put(rec); }
+          catch (e) { try { t.abort(); } catch {} ; return reject(e); }
+          t.oncomplete = () => resolve();
+          t.onerror = () => reject(t.error);
+          t.onabort = () => reject(t.error || new Error('Transaction abortée'));
+        });
+        savedCount += slice.length;
+      } catch (e) {
+        const isQuota = e?.name === 'QuotaExceededError' || /quota/i.test(e?.message || '');
+        if (isQuota) {
+          console.warn(`[store] Quota IDB atteint après ${savedCount} images. Fallback mémoire.`);
+          quotaHit = true;
+          if (typeof window !== 'undefined') window.__idbQuotaHit = true;
+          // Stocker ce slice + suivants en mémoire
+          for (const rec of slice) setMemoryImage(rec.profileId, rec.index, rec.blob, rec.type);
+          memoryFallbackCount += slice.length;
+        } else {
+          console.warn('[store] saveImageBatch erreur (continue, mémoire):', e.message);
+          for (const rec of slice) setMemoryImage(rec.profileId, rec.index, rec.blob, rec.type);
+          memoryFallbackCount += slice.length;
+        }
+      }
+    }
+    if (memoryFallbackCount > 0) {
+      console.log(`[store] ${memoryFallbackCount} images en mémoire (non persistantes).`);
+    }
+    return savedCount + memoryFallbackCount;
   }
 
   // Format legacy : images dans le manifest
