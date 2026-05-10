@@ -775,10 +775,17 @@ function hookUI() {
   setTimeout(updateIgBulkCount, 500);
 
   // raccourci clavier ⌘S / Ctrl+S
+  // Si edit-dialog ouvert : sauvegarde le profil édité (form submit).
+  // Sinon : push cloud (save-btn topbar).
   document.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 's' && !$('#edit-dialog').open) {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
-      $('#save-btn')?.click();
+      const editDlg = $('#edit-dialog');
+      if (editDlg?.open) {
+        $('#edit-save')?.click();
+      } else {
+        $('#save-btn')?.click();
+      }
     }
   });
 
@@ -2704,9 +2711,11 @@ function setTagFilter(tag) {
 function handleQuickAction(profileId, action) {
   const p = STATE.profiles.find(x => x.id === profileId);
   if (!p) return;
+  // tel: et mailto: → location.href pour rester dans l'app PWA standalone
+  // (window.open ouvre une tab système même en PWA, ce qui sort de l'app).
   if (action === 'ig' && p.instagram)    window.open(`https://instagram.com/${p.instagram}`, '_blank', 'noopener');
-  else if (action === 'phone' && p.phone) window.open('tel:' + p.phone.replace(/\s+/g, ''));
-  else if (action === 'mail' && p.email)  window.open('mailto:' + p.email);
+  else if (action === 'phone' && p.phone) location.href = 'tel:' + p.phone.replace(/\s+/g, '');
+  else if (action === 'mail' && p.email)  location.href = 'mailto:' + p.email;
   else if (action === 'edit')             openEditDialog(p);
 }
 
@@ -2773,8 +2782,8 @@ function showContextMenu(profileId, x, y) {
     if (act === 'open') openProfileDialog(p.id);
     else if (act === 'edit') openEditDialog(p);
     else if (act === 'ig')   window.open(`https://instagram.com/${p.instagram}`, '_blank', 'noopener');
-    else if (act === 'mail') window.open('mailto:' + p.email);
-    else if (act === 'phone')window.open('tel:' + p.phone.replace(/\s+/g, ''));
+    else if (act === 'mail') location.href = 'mailto:' + p.email;
+    else if (act === 'phone')location.href = 'tel:' + p.phone.replace(/\s+/g, '');
     else if (act === 'fav') {
       p.status = p.status === 'favori' ? '' : 'favori';
       await saveProfile(p);

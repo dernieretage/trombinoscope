@@ -506,6 +506,10 @@ export function svgIcon(name) {
 
 let toastSeq = 0;
 export function toast(message, { type = 'info', timeout = 3500, action } = {}) {
+  // Sécurité : un timeout 0 voulait dire "persistant" mais setTimeout(0) ferme
+  // immédiatement → l'user ne voyait rien. Pour erreurs persistantes, on
+  // force au moins 8s (et le user peut fermer via la croix).
+  if (timeout === 0) timeout = type === 'err' ? 10000 : 4000;
   const c = document.getElementById('toasts');
   const id = 'tst-' + (++toastSeq);
   const el = document.createElement('div');

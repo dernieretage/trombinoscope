@@ -60,16 +60,23 @@ export function guessNameFromHandle(handle) {
   return s.split(' ').filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
 }
 
+// Normalise une chaîne pour comparaison insensible aux accents
+// (José ↔ jose, café ↔ cafe, Cécile ↔ cecile)
+export function normalizeForSearch(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
 // Levenshtein-lite pour fuzzy search (court-circuit si trop éloigné)
+// Insensible aux accents.
 export function fuzzyMatch(needle, haystack) {
   if (!needle) return true;
-  needle = needle.toLowerCase();
-  haystack = haystack.toLowerCase();
-  if (haystack.includes(needle)) return true;
-  if (needle.length < 3) return false;
+  const n = normalizeForSearch(needle);
+  const h = normalizeForSearch(haystack);
+  if (h.includes(n)) return true;
+  if (n.length < 3) return false;
   // tokenisation simple
-  const tokens = needle.split(/\s+/);
-  return tokens.every(t => haystack.includes(t));
+  const tokens = n.split(/\s+/);
+  return tokens.every(t => h.includes(t));
 }
 
 export function highlight(text, query) {
@@ -77,10 +84,31 @@ export function highlight(text, query) {
   const tokens = query.trim().split(/\s+/).filter(Boolean);
   if (!tokens.length) return escapeHTML(text);
   const escaped = escapeHTML(text);
+  // Pour highlight insensible aux accents : matcher sur version normalisée,
+  // mais réécrire dans le texte original (préserve les accents visuellement).
+  const normalizedText = normalizeForSearch(escaped);
   let out = escaped;
   for (const t of tokens) {
-    const re = new RegExp('(' + escapeRegex(t) + ')', 'gi');
-    out = out.replace(re, '<mark class="hl">$1</mark>');
+    const tn = normalizeForSearch(t);
+    if (!tn) continue;
+    // Trouver toutes les positions matched dans la version normalisée,
+    // puis appliquer <mark> aux mêmes positions du texte escapé original.
+    const positions = [];
+    const re = new RegExp(escapeRegex(tn), 'gi');
+    let m;
+    while ((m = re.exec(normalizedText)) !== null) {
+      positions.push([m.index, m.index + m[0].length]);
+      if (m.index === re.lastIndex) re.lastIndex++; // safety
+    }
+    if (positions.length) {
+      // Appliquer du dernier au premier pour ne pas décaler les indices
+      let result = out;
+      for (let i = positions.length - 1; i >= 0; i--) {
+        const [start, end] = positions[i];
+        result = result.slice(0, start) + '<mark class="hl">' + result.slice(start, end) + '</mark>' + result.slice(end);
+      }
+      out = result;
+    }
   }
   return out;
 }
