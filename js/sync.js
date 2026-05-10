@@ -50,21 +50,52 @@ export function isSyncReady() { return isReady; }
 
 // ============= API GITHUB =============
 
-async function ghFetch(path, opts = {}) {
+async function ghFetch(path, opts = {}, retryAttempt = 0) {
   const cfg = await getSyncConfig();
   if (!cfg.token) throw new Error('Aucun token GitHub configuré');
-  const res = await fetch(`${GH_API}${path}`, {
-    ...opts,
-    headers: {
-      'Authorization': `Bearer ${cfg.token}`,
-      'Accept': 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-      'Content-Type': 'application/json',
-      ...(opts.headers || {}),
-    },
-  });
+  let res;
+  try {
+    res = await fetch(`${GH_API}${path}`, {
+      ...opts,
+      headers: {
+        'Authorization': `Bearer ${cfg.token}`,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json',
+        ...(opts.headers || {}),
+      },
+    });
+  } catch (e) {
+    // Network error : retry 1x après pause
+    if (retryAttempt < 2) {
+      await new Promise(r => setTimeout(r, 1500));
+      return ghFetch(path, opts, retryAttempt + 1);
+    }
+    throw new Error('Réseau injoignable: ' + e.message);
+  }
   if (res.status === 401) throw new Error('Token GitHub invalide ou expiré.');
-  if (res.status === 403) throw new Error('Quota dépassé ou scope manquant (besoin de "gist").');
+  if (res.status === 403) {
+    // Peut être un rate limit (X-RateLimit-Remaining: 0)
+    const remaining = res.headers.get('x-ratelimit-remaining');
+    const reset = res.headers.get('x-ratelimit-reset');
+    if (remaining === '0' && reset) {
+      const wait = Math.max(0, parseInt(reset, 10) * 1000 - Date.now());
+      if (wait < 60000 && retryAttempt < 2) {
+        await new Promise(r => setTimeout(r, wait + 500));
+        return ghFetch(path, opts, retryAttempt + 1);
+      }
+      throw new Error(`Quota GitHub atteint, reset dans ${Math.round(wait / 1000)}s.`);
+    }
+    throw new Error('Quota dépassé ou scope manquant (besoin de "gist").');
+  }
+  if (res.status === 422) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`Payload trop gros ou invalide (422): ${txt.slice(0, 200)}`);
+  }
+  if (res.status >= 500 && retryAttempt < 2) {
+    await new Promise(r => setTimeout(r, 1500 * (retryAttempt + 1)));
+    return ghFetch(path, opts, retryAttempt + 1);
+  }
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
     throw new Error(`GitHub API ${res.status}: ${txt.slice(0, 200)}`);

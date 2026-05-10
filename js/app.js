@@ -416,10 +416,11 @@ function hookUI() {
       return;
     }
     try {
-      await syncPushNow();
-      toast('✓ Sauvegarde cloud réussie.', { type: 'ok', timeout: 2500 });
+      const r = await syncPushNow();
+      const imgMsg = r.images ? ` + ${r.images} images (${r.chunks} fichiers)` : '';
+      toast(`✓ Sauvegarde cloud : ${r.profiles} profils${imgMsg} (${r.sizeKb} Ko).`, { type: 'ok', timeout: 4500 });
     } catch (e) {
-      toast('Sauvegarde échouée : ' + e.message, { type: 'err', timeout: 5000 });
+      toast('Sauvegarde échouée : ' + e.message, { type: 'err', timeout: 6000 });
     }
   });
 
@@ -1738,13 +1739,41 @@ function hookSettingsDialog() {
       out.textContent = `✓ Connecté en tant que @${u.login}. Push initial vers le cloud…`;
       out.className = 'settings__small ok';
       await setSyncToken(token);
-      // Push immédiat pour pousser TOUT vers le Gist (état actuel = source de vérité initiale)
+      await setSyncToken(token);
+      // Vérifier si Gist existe déjà avec données → proposer pull au lieu de push
       try {
-        const r = await syncPushNow();
-        const imgMsg = r.images ? ` + ${r.images} images (${r.chunks} fichiers)` : '';
-        out.textContent = `✓ @${u.login} — ${r.profiles} profils${imgMsg} sauvegardés (${r.sizeKb} Ko). Sync auto activée.`;
-      } catch (pushErr) {
-        out.textContent = `✓ @${u.login} connecté — mais push initial échoué : ${pushErr.message}`;
+        const diag = await diagnoseSync();
+        if (diag.manifestProfiles > 0 && diag.chunkFilesCount > 0) {
+          // Gist contient déjà des data → pull plutôt que push
+          out.textContent = `✓ @${u.login} — Gist trouvé avec ${diag.manifestProfiles} profils + ${diag.chunkFilesCount} chunks d'images. Récupération…`;
+          const r = await syncPullNow({ replace: true });
+          out.textContent = `✓ Synchro réussie : ${r.profiles} profils + ${r.images} images chargés depuis le cloud.`;
+          // Recharger les profils dans STATE
+          STATE.profiles = await getAllProfiles();
+          STATE.imagesByProfile.clear();
+          for (const p of STATE.profiles) {
+            const imgs = await getProfileImages(p.id);
+            if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
+          }
+          buildFilterChips();
+          buildProfessionDatalist();
+          render();
+          window.__updateIgBulkCount?.();
+        } else if (diag.manifestProfiles > 0) {
+          // Gist a manifest mais pas de chunks
+          out.textContent = `⚠ Gist trouvé mais 0 chunks d'images. Push initial complet…`;
+          const r = await syncPushNow();
+          const imgMsg = r.images ? ` + ${r.images} images sur ${r.chunks} fichiers` : ' (sans images)';
+          out.textContent = `✓ @${u.login} — ${r.profiles} profils${imgMsg} sauvegardés (${r.sizeKb} Ko).`;
+        } else {
+          // Gist vide ou nouveau → push tout
+          out.textContent = `✓ @${u.login} — Push initial vers le cloud…`;
+          const r = await syncPushNow();
+          const imgMsg = r.images ? ` + ${r.images} images sur ${r.chunks} fichiers` : ' (sans images)';
+          out.textContent = `✓ @${u.login} — ${r.profiles} profils${imgMsg} sauvegardés (${r.sizeKb} Ko). Sync auto activée.`;
+        }
+      } catch (syncErr) {
+        out.textContent = `✓ @${u.login} connecté — mais sync initiale échouée : ${syncErr.message}`;
       }
       await setupAutoSync();
       updateSyncPill();
