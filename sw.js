@@ -1,5 +1,6 @@
-// Service worker minimal — cache-first pour les assets statiques
-const VERSION = 'trombinoscope-v28';
+// Service worker — network-first pour les pages HTML (évite les ghost old data
+// après déploiement), cache-first pour CSS/JS statiques avec version-busting.
+const VERSION = 'trombinoscope-v29';
 const ASSETS = [
   './',
   './index.html',
@@ -35,18 +36,42 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  // bypass pour autres origines (Google Fonts, etc.) — réseau direct
+  // bypass pour autres origines (Google Fonts, GitHub API, etc.) — réseau direct
   if (url.origin !== location.origin) return;
 
-  e.respondWith(
-    caches.match(req).then(cached =>
-      cached || fetch(req).then(res => {
-        if (res.ok && (req.destination === 'script' || req.destination === 'style' || req.destination === 'document' || req.destination === 'manifest')) {
+  // Navigations (HTML) → network-first : évite les "ghost old UI" après deploy.
+  // Si offline, fallback sur le cache.
+  if (req.mode === 'navigate' || req.destination === 'document') {
+    e.respondWith(
+      fetch(req).then(res => {
+        if (res.ok) {
           const copy = res.clone();
-          caches.open(VERSION).then(c => c.put(req, copy));
+          caches.open(VERSION).then(c => c.put(req, copy)).catch(() => {});
         }
         return res;
-      }).catch(() => caches.match('./index.html'))
-    )
+      }).catch(() => caches.match(req).then(c => c || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // Assets statiques (CSS/JS/manifest) : cache-first avec MAJ en background.
+  // ignoreSearch:false → respecte ?v=xxx pour bust le cache.
+  e.respondWith(
+    caches.match(req, { ignoreSearch: false }).then(cached => {
+      if (cached) {
+        // Stale-while-revalidate : revalider en background sans bloquer
+        fetch(req).then(res => {
+          if (res.ok) caches.open(VERSION).then(c => c.put(req, res));
+        }).catch(() => {});
+        return cached;
+      }
+      return fetch(req).then(res => {
+        if (res.ok && (req.destination === 'script' || req.destination === 'style' || req.destination === 'manifest')) {
+          const copy = res.clone();
+          caches.open(VERSION).then(c => c.put(req, copy)).catch(() => {});
+        }
+        return res;
+      }).catch(() => caches.match('./index.html'));
+    })
   );
 });

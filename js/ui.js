@@ -36,7 +36,7 @@ export function renderCard(profile, { firstImage, query, index = 0 } = {}) {
   const tpl = document.getElementById('tpl-card');
   const node = tpl.content.firstElementChild.cloneNode(true);
   node.dataset.id = profile.id;
-  node.style.setProperty('--delay', Math.min(index * 18, 320) + 'ms');
+  node.style.setProperty('--delay', Math.min(index * 8, 160) + 'ms');
 
   const avatarEl = node.querySelector('.card__avatar');
   applyAvatar(avatarEl, profile, firstImage);

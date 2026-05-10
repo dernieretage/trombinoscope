@@ -68,13 +68,15 @@ export async function saveProfile(profile) {
 }
 
 export async function deleteProfile(id) {
+  // Récupérer les keys d'images pour révoquer les objectURL avant suppression
+  const imgs = await getProfileImages(id).catch(() => []);
   const store = await tx(STORE_PROFILES, 'readwrite');
   await reqToPromise(store.delete(id));
   // nettoyer les images associées
   const imgStore = await tx(STORE_IMAGES, 'readwrite');
   const range = IDBKeyRange.bound(`${id}::`, `${id}::￿`);
   const req = imgStore.openCursor(range);
-  return new Promise((resolve) => {
+  await new Promise((resolve) => {
     req.onsuccess = () => {
       const cursor = req.result;
       if (cursor) {
@@ -85,6 +87,11 @@ export async function deleteProfile(id) {
       }
     };
   });
+  // Révoquer tous les objectURL en cache pour ces images
+  try {
+    const u = await import('./utils.js');
+    for (const img of imgs) u.revokeObjectURL(img.key);
+  } catch {}
 }
 
 export async function bulkSaveProfiles(profiles) {

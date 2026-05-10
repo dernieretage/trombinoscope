@@ -143,10 +143,16 @@ const STATE = {
     console.warn('Enrichment skipped:', e.message);
   }
 
-  // précharge les premières images de chaque profil pour les vignettes
-  for (const p of STATE.profiles) {
-    const imgs = await getProfileImages(p.id);
-    if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
+  // Précharge les premières images de chaque profil pour les vignettes,
+  // en parallèle par batches de 25 (évite la latence séquentielle IDB
+  // qui plombe le boot quand il y a 50+ profils).
+  for (let i = 0; i < STATE.profiles.length; i += 25) {
+    const batch = STATE.profiles.slice(i, i + 25);
+    await Promise.all(batch.map(p =>
+      getProfileImages(p.id).then(imgs => {
+        if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
+      })
+    ));
   }
 
   buildFilterChips();
@@ -512,7 +518,7 @@ function hookUI() {
     STATE.filters.query = input.value.trim();
     clear.hidden = !STATE.filters.query;
     render();
-  }, 120);
+  }, 220);
   input.addEventListener('input', onQuery);
   clear.addEventListener('click', () => { input.value = ''; STATE.filters.query = ''; clear.hidden = true; render(); input.focus(); });
 

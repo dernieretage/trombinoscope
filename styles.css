@@ -623,12 +623,11 @@ body.is-ready .boot { opacity: 0; visibility: hidden; pointer-events: none; }
   cursor: pointer;
   transition: transform var(--t-mid) var(--ease), border-color var(--t-fast) var(--ease), box-shadow var(--t-mid) var(--ease);
   box-shadow: var(--shadow-card);
-  /* anim entry */
+  /* anim entry — courte pour éviter le jank cumulatif sur grandes listes */
   opacity: 0;
-  transform: translateY(8px);
-  animation: cardIn .55s var(--ease) forwards;
+  transform: translateY(6px);
+  animation: cardIn .28s var(--ease) forwards;
   animation-delay: var(--delay, 0ms);
-  will-change: transform;
 }
 @keyframes cardIn {
   to { opacity: 1; transform: translateY(0); }
