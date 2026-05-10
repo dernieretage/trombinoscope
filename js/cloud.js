@@ -225,13 +225,19 @@ export async function pushCloud({ allowEmpty = false } = {}) {
     const fileNames = Object.keys(exported.files);
     console.log(`[Cloud] Push: ${fileNames.length} fichiers (${Math.round(exported.totalSize / 1024)} Ko)`);
 
-    // ORDRE CRITIQUE :
-    // 1. Push tous les chunks d'images d'ABORD (les autres devices verront
-    //    le manifest non-mis-à-jour mais c'est OK : les anciens chunks restent valides)
-    // 2. Cleanup chunks orphelins
-    // 3. Push manifest EN DERNIER (acte d'engagement atomique)
-    // → Si on plante au milieu des chunks, le manifest reste l'ancien valide,
-    //   pas de pull qui pointerait vers chunks manquants.
+    // REVERT R7#2 : push manifest EN PREMIER (comme à l'origine).
+    // L'ordre "manifest dernier" causait : chunks écrasés avec nouveau contenu
+    // alors que l'ancien manifest pointait toujours dessus → autres devices
+    // pull → données incohérentes (vieille liste de profils + nouvelles images).
+    // Avec manifest first : si push échoue à mi-chunks, le manifest référence
+    // les nouveaux chunks dont certains manquent → safety threshold (50%) annule
+    // le pull côté lecture, ce qui préserve les données locales.
+    const manifestPath = `${PATH_PREFIX}/${MANIFEST_FILE}`;
+    emit({ status: 'pushing', message: `Push manifest…` });
+    await putFile(manifestPath, exported.files[MANIFEST_FILE], `Cloud sync — ${exported.totalImages} images`);
+    console.log('[Cloud] Manifest pushé OK');
+
+    // Push chaque chunk individuellement
     const chunkNames = fileNames.filter(n => n !== MANIFEST_FILE);
     for (let i = 0; i < chunkNames.length; i++) {
       const name = chunkNames[i];
@@ -248,7 +254,7 @@ export async function pushCloud({ allowEmpty = false } = {}) {
       await new Promise(r => setTimeout(r, 250)); // throttle
     }
 
-    // Cleanup chunks orphelins (avant le manifest pour cohérence)
+    // Cleanup chunks orphelins (en dernier — les chunks pertinents sont déjà à jour)
     const newChunkNames = new Set(chunkNames);
     const remoteChunks = await listChunkFilesOnRemote();
     const toDelete = remoteChunks.filter(n => !newChunkNames.has(n));
@@ -260,12 +266,6 @@ export async function pushCloud({ allowEmpty = false } = {}) {
         await new Promise(r => setTimeout(r, 200));
       }
     }
-
-    // Push manifest en DERNIER : acte d'engagement atomique
-    const manifestPath = `${PATH_PREFIX}/${MANIFEST_FILE}`;
-    emit({ status: 'pushing', message: `Push manifest…` });
-    await putFile(manifestPath, exported.files[MANIFEST_FILE], `Cloud sync — ${exported.totalImages} images`);
-    console.log('[Cloud] Manifest pushé OK (commit)');
 
     const manifestStr = exported.files[MANIFEST_FILE];
     const hash = await computeHash(manifestStr + ':' + exported.totalImages);

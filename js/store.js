@@ -332,13 +332,23 @@ export async function importAll(data, { replace = false } = {}) {
  * Import "chunked" : prend un objet { 'trombinoscope.json': string, 'trombinoscope-images-NNN.json': string, ... }
  * et restaure tout. Compatible avec l'ancien format si un seul fichier "trombinoscope.json" est fourni.
  */
-export async function importAllChunked(filesByName, { replace = true } = {}) {
+export async function importAllChunked(filesByName, { replace = true, mergeByUpdatedAt = true } = {}) {
   const manifestStr = filesByName['trombinoscope.json'];
   if (!manifestStr) throw new Error('trombinoscope.json manquant');
   const manifest = JSON.parse(manifestStr);
   let totalProfiles = 0, totalImages = 0;
 
-  if (replace) {
+  // MERGE STRATEGY (par défaut, plus safe) :
+  // - Pour chaque profil distant, on compare updatedAt avec le local
+  //   et on garde le PLUS RÉCENT (last-write-wins par profil, pas par push).
+  // - Pour les profils LOCAUX qui n'existent pas en distant : on les GARDE
+  //   (peut-être ajoutés localement, pas encore pushés).
+  // - Pour les images : on N'EFFACE PLUS le STORE_IMAGES local. On ajoute
+  //   les images du distant. Les images locales pour profils encore présents
+  //   sont conservées (utile en nav privée + rescan IG manuel).
+  // L'ancien comportement `replace=true` est conservé pour le cas explicite
+  // (import manuel "Remplacer tout").
+  if (replace && !mergeByUpdatedAt) {
     const db = await openDB();
     const t = db.transaction([STORE_PROFILES, STORE_IMAGES], 'readwrite');
     t.objectStore(STORE_PROFILES).clear();
@@ -351,8 +361,47 @@ export async function importAllChunked(filesByName, { replace = true } = {}) {
   }
 
   if (manifest.profiles?.length) {
-    await bulkSaveProfiles(manifest.profiles);
-    totalProfiles = manifest.profiles.length;
+    if (mergeByUpdatedAt) {
+      // Charger les profils locaux pour comparer
+      const localProfiles = await getAllProfiles();
+      const localById = new Map(localProfiles.map(p => [p.id, p]));
+      const remoteIds = new Set(manifest.profiles.map(p => p.id));
+      const toSave = [];
+      for (const remote of manifest.profiles) {
+        const local = localById.get(remote.id);
+        if (!local) {
+          toSave.push(remote); // nouveau profil distant
+        } else {
+          const remoteTs = Date.parse(remote.updatedAt) || 0;
+          const localTs = Date.parse(local.updatedAt) || 0;
+          if (remoteTs > localTs) {
+            toSave.push(remote); // distant plus récent → adopte
+          } // sinon : local plus récent → on garde local, on push à la prochaine sync
+        }
+      }
+      // Profils locaux pas dans distant : on les supprime SEULEMENT si replace=true ET
+      // qu'ils ne sont pas ajoutés récemment (ex. créés localement il y a < 24h)
+      if (replace) {
+        const cutoff = Date.now() - 24 * 3600 * 1000;
+        for (const local of localProfiles) {
+          if (!remoteIds.has(local.id)) {
+            const localTs = Date.parse(local.updatedAt) || 0;
+            if (localTs < cutoff) {
+              // Vieux profil local pas dans le cloud → supprimé sur autre device
+              await deleteProfile(local.id).catch(() => {});
+            }
+            // Sinon : profil créé récemment localement, on le garde (sera pushé)
+          }
+        }
+      }
+      if (toSave.length) {
+        await bulkSaveProfiles(toSave);
+      }
+      totalProfiles = manifest.profiles.length;
+    } else {
+      await bulkSaveProfiles(manifest.profiles);
+      totalProfiles = manifest.profiles.length;
+    }
   }
 
   // Helper qui save une liste d'images. Robuste aux quotas IndexedDB
