@@ -404,8 +404,12 @@ function buildFilterChips() {
 
   const counts = professionCounts();
   const all = document.createElement('button');
-  all.className = 'chip' + (STATE.filters.profession === 'all' ? ' is-active' : '');
+  const allActive = STATE.filters.profession === 'all';
+  all.className = 'chip' + (allActive ? ' is-active' : '');
   all.dataset.profession = 'all';
+  all.setAttribute('role', 'tab');
+  all.setAttribute('aria-selected', allActive ? 'true' : 'false');
+  if (allActive) all.setAttribute('aria-current', 'true');
   all.innerHTML = `Tous <span class="chip__count">${STATE.profiles.length}</span>`;
   el.appendChild(all);
 
@@ -413,8 +417,12 @@ function buildFilterChips() {
   const presentPros = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
   for (const pro of presentPros) {
     const c = document.createElement('button');
-    c.className = 'chip' + (STATE.filters.profession === pro ? ' is-active' : '');
+    const active = STATE.filters.profession === pro;
+    c.className = 'chip' + (active ? ' is-active' : '');
     c.dataset.profession = pro;
+    c.setAttribute('role', 'tab');
+    c.setAttribute('aria-selected', active ? 'true' : 'false');
+    if (active) c.setAttribute('aria-current', 'true');
     c.innerHTML = `${pro} <span class="chip__count">${counts[pro]}</span>`;
     el.appendChild(c);
   }
@@ -437,10 +445,13 @@ function buildStatusFilters() {
   el.innerHTML = '';
   for (const s of STATUSES) {
     const b = document.createElement('button');
-    b.className = 'status-pill' + (STATE.filters.status === s.id ? ' is-active' : '');
+    const active = STATE.filters.status === s.id;
+    b.className = 'status-pill' + (active ? ' is-active' : '');
     b.style.setProperty('--c', s.color);
     b.dataset.status = s.id;
     b.textContent = s.label;
+    b.setAttribute('aria-pressed', active ? 'true' : 'false');
+    b.setAttribute('aria-label', `Filtrer par statut : ${s.label}`);
     el.appendChild(b);
   }
   el.onclick = (e) => {
