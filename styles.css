@@ -247,6 +247,47 @@ body.is-ready .boot { opacity: 0; visibility: hidden; pointer-events: none; }
   to { transform: rotate(-360deg); }
 }
 
+/* ============================================================
+   ONBOARDING BANNER (appareil sans token cloud)
+   ============================================================ */
+.onboarding {
+  position: fixed; left: 0; right: 0; bottom: 16px;
+  z-index: 80;
+  display: flex; justify-content: center;
+  padding: 0 14px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity .3s var(--ease), transform .3s var(--ease);
+}
+.onboarding--in { opacity: 1; transform: translateY(0); }
+.onboarding--out { opacity: 0; transform: translateY(20px); }
+.onboarding__inner {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 14px;
+  max-width: 720px; width: 100%;
+  padding: 14px 16px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  box-shadow: 0 12px 40px -8px rgba(0,0,0,.55), 0 0 0 1px color-mix(in oklab, var(--accent) 25%, transparent);
+}
+.onboarding__icon { font-size: 28px; flex: none; }
+.onboarding__body { flex: 1; min-width: 0; }
+.onboarding__title { font-weight: 600; font-size: 15px; margin-bottom: 4px; color: var(--text); }
+.onboarding__text { font-size: 13px; color: var(--text-muted); line-height: 1.45; }
+.onboarding__actions { display: flex; gap: 6px; align-items: center; flex: none; }
+.onboarding__actions .btn--ghost { width: 36px; height: 36px; padding: 0; font-size: 22px; line-height: 1; display: grid; place-items: center; }
+@media (max-width: 600px) {
+  .onboarding { bottom: 8px; padding: 0 8px; }
+  .onboarding__inner { flex-wrap: wrap; padding: 12px 14px; gap: 10px; }
+  .onboarding__icon { font-size: 24px; }
+  .onboarding__title { font-size: 14px; }
+  .onboarding__text { font-size: 12.5px; }
+  .onboarding__actions { width: 100%; justify-content: space-between; }
+  .onboarding__actions .btn--primary { flex: 1; }
+}
+
 .cta {
   display: inline-flex; align-items: center; gap: 6px;
   background: var(--accent); color: var(--accent-ink);
@@ -1449,7 +1490,7 @@ dialog[open] .dialog__inner {
    RESPONSIVE
    ============================================================ */
 @media (max-width: 880px) {
-  .topbar__inner { grid-template-columns: auto 1fr auto; gap: 8px; }
+  .topbar__inner { grid-template-columns: auto 1fr auto; gap: 8px; padding: 10px 14px; }
   .brand__name { display: none; }
   .filterbar__inner { grid-template-columns: 1fr; gap: 8px; }
   .filterbar__right {
@@ -1470,20 +1511,78 @@ dialog[open] .dialog__inner {
   .grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
   .editform__grid { grid-template-columns: 1fr; }
   .cta span { display: none; }
-  .cta { padding: 0 12px; width: 40px; justify-content: center; }
+  .cta { padding: 0 12px; width: 44px; justify-content: center; }
   .cta svg { width: 18px; height: 18px; }
   .statbar__inner { gap: 18px; }
   .stat__num { font-size: 20px; }
   .stat--right { width: 100%; margin-left: 0; }
+
+  /* Mobile : touch targets minimum 44px (Apple HIG) */
+  .iconbtn { width: 44px; height: 44px; }
+  .savebtn { height: 40px; }
+  .igbulkbtn { height: 40px; }
+
+  /* Filter chips plus lisibles */
+  .chip { font-size: 13px; padding: 8px 14px; }
+  .status-pill { font-size: 12px; padding: 6px 12px; }
 }
 @media (max-width: 480px) {
-  .grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .card__body { padding: 10px; }
-  .card__name { font-size: 16px; }
-  .card__foot { padding: 6px 10px 10px; }
+  /* Topbar plus aéré */
+  .topbar__inner { padding: 8px 10px; gap: 6px; }
+  .search { height: 40px; padding: 0 10px; }
+  .search input { font-size: 16px; padding: 0 8px; } /* 16px = pas de zoom iOS sur focus */
+  .search__kbd { display: none; }
+  .filterbar__inner { padding: 8px 10px; }
+
+  /* Grille : 2 colonnes plus serrées et plus respirantes */
+  .grid { grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 0; }
+  .main { padding: 12px 10px; }
+
+  /* Cartes : meilleure lisibilité du nom + métier */
+  .card { border-radius: 14px; }
+  .card__cover { aspect-ratio: 1 / 1.15; }
+  .card__avatar { font-size: clamp(42px, 14vw, 64px); }
+  .card__body { padding: 10px 11px 4px; }
+  .card__name { font-size: 15.5px; line-height: 1.25; letter-spacing: -.005em; }
+  .card__sub { font-size: 12.5px; line-height: 1.35; margin-top: 3px; }
+  .card__tags { gap: 4px; margin-top: 6px; }
+  .card__tags .tag { font-size: 10.5px; padding: 2px 7px; }
+  .card__foot { padding: 6px 11px 10px; font-size: 11px; }
+  .card__handle { font-size: 11.5px; }
+  .card__status { font-size: 10.5px; padding: 4px 9px; top: 8px; left: 8px; }
+  .card__new { top: 8px; right: 8px; font-size: 9.5px; padding: 3px 7px; }
+
+  /* Topbar minimaliste */
   .brand__count { display: none; }
   .topbar__actions .iconbtn:not(#menu-toggle):not(#theme-toggle):not(#refresh-btn) { display: none; }
-  .quickbtn { width: 32px; height: 32px; }
+  .quickbtn { width: 36px; height: 36px; }
+
+  /* Statbar : moins envahissante */
+  .statbar { padding: 8px 10px; }
+  .statbar__inner { gap: 14px; flex-wrap: wrap; }
+  .stat__num { font-size: 18px; }
+  .stat__label { font-size: 11px; }
+
+  /* Tags actifs bar */
+  .tag-bar { padding: 6px 10px; font-size: 12.5px; }
+
+  /* Profile detail (modal) plus aéré */
+  .profile { padding: 14px 12px 20px; }
+  .profile__main h2 { font-size: 22px; }
+  .profile__field { padding: 10px 0; }
+
+  /* Onboarding banner & toasts plus accessibles */
+  .toasts { bottom: calc(env(safe-area-inset-bottom, 0) + 12px); }
+
+  /* Boutons d'action plus gros */
+  .btn { min-height: 40px; padding: 0 14px; font-size: 14px; }
+  .btn--primary { font-weight: 600; }
+}
+
+/* Très petit écran (iPhone SE 1st gen, ~320px) : single column */
+@media (max-width: 360px) {
+  .grid { grid-template-columns: 1fr; gap: 12px; }
+  .card__cover { aspect-ratio: 16 / 10; }
 }
 
 /* ---- Reduce motion ---- */

@@ -451,10 +451,17 @@
           recoller le token : générez ici un lien magique. L'autre appareil l'ouvre une fois
           → le token cloud est configuré automatiquement et permet d'écrire les modifications.
         </p>
-        <div class="settings__actions" style="margin-top: 8px;">
+        <div class="settings__actions" style="margin-top: 8px; flex-wrap: wrap; gap: 8px;">
           <button type="button" class="btn btn--primary" id="cloud-invite-btn">
-            🔗 Générer un lien pour autre appareil
+            📱 QR + lien pour autre appareil
           </button>
+          <button type="button" class="btn btn--ghost" id="cloud-share-btn" hidden>
+            ↗ Partager (AirDrop / Mail / SMS)
+          </button>
+        </div>
+        <div id="cloud-qr-wrap" style="display:none; margin-top: 14px; text-align:center; padding: 16px; background: #fff; border-radius: var(--r-md);">
+          <canvas id="cloud-qr-canvas" style="max-width: 240px; width: 100%; height: auto; image-rendering: pixelated;"></canvas>
+          <p style="margin: 10px 0 0; color: #1d1a14; font-size: 13px; font-weight: 500;">Scanne avec l'autre appareil → cloud activé instantanément.</p>
         </div>
         <textarea id="cloud-invite-out" rows="3" readonly style="display:none; margin-top: 8px; width: 100%; font-family: ui-monospace, monospace; font-size: 11px; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); color: var(--text); word-break: break-all;"></textarea>
         <small id="cloud-invite-help" class="settings__small" style="display:none; margin-top: 4px;"></small>

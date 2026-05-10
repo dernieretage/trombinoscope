@@ -33,6 +33,7 @@ import {
   isAiConfigured, scanProfileWithAi, testAiConnection,
 } from './ai.js';
 import { applyEnrichmentIfNew } from './enrichment.js';
+import { renderQRToCanvas } from './qr.js';
 
 // ============= STATE =============
 
@@ -210,7 +211,91 @@ const STATE = {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
+
+  // Banner d'onboarding : si cet appareil n'a pas de token cloud mais le cloud
+  // contient des données → on est sur un appareil "vierge". Affiche un gros CTA
+  // pour scanner le QR depuis un autre appareil. Après 2s pour laisser le boot
+  // se terminer.
+  setTimeout(() => maybeShowOnboardingBanner(), 2500);
 })();
+
+async function maybeShowOnboardingBanner() {
+  try {
+    const cloudCfg = await getCloudConfig();
+    if (cloudCfg.token) return; // déjà configuré
+    const dismissed = await getMeta('onboarding_dismissed_at');
+    if (dismissed && Date.now() - dismissed < 24 * 3600 * 1000) return; // pas plus d'1x/jour
+    if (STATE.profiles.length === 0) return; // app vide, rien à protéger
+    showOnboardingBanner();
+  } catch {}
+}
+
+function showOnboardingBanner() {
+  if (document.getElementById('onboarding-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'onboarding-banner';
+  banner.className = 'onboarding';
+  banner.innerHTML = `
+    <div class="onboarding__inner">
+      <div class="onboarding__icon">📱</div>
+      <div class="onboarding__body">
+        <div class="onboarding__title">Activer la sauvegarde sur cet appareil</div>
+        <div class="onboarding__text">Tu lis les profils en temps réel mais tu ne peux pas encore enregistrer tes modifs ici. Sur un appareil déjà configuré, ouvre <strong>Réglages → QR</strong>, scanne-le → cet appareil pourra modifier en 2 sec.</div>
+      </div>
+      <div class="onboarding__actions">
+        <button type="button" class="btn btn--primary" id="onboarding-open">Comment faire ?</button>
+        <button type="button" class="btn btn--ghost" id="onboarding-dismiss" aria-label="Masquer">×</button>
+      </div>
+    </div>`;
+  document.body.appendChild(banner);
+  document.getElementById('onboarding-open').addEventListener('click', () => {
+    openOnboardingHelp();
+  });
+  document.getElementById('onboarding-dismiss').addEventListener('click', async () => {
+    banner.classList.add('onboarding--out');
+    setTimeout(() => banner.remove(), 250);
+    await setMeta('onboarding_dismissed_at', Date.now());
+  });
+  requestAnimationFrame(() => banner.classList.add('onboarding--in'));
+}
+
+function openOnboardingHelp() {
+  const dlgId = 'onboarding-help-dialog';
+  let dlg = document.getElementById(dlgId);
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = dlgId;
+    dlg.className = 'dialog';
+    dlg.innerHTML = `
+      <div class="dialog__inner" style="max-width: 460px;">
+        <header class="dialog__head">
+          <h2>Activer cet appareil en 2 sec</h2>
+          <button type="button" class="iconbtn" data-close aria-label="Fermer">×</button>
+        </header>
+        <div class="dialog__body" style="padding: 8px 4px;">
+          <ol style="line-height: 1.6; padding-left: 22px; margin: 0;">
+            <li>Sur un appareil <strong>déjà configuré</strong> (où tu peux sauvegarder), ouvre le menu <strong>⋯ → Réglages</strong>.</li>
+            <li>Va dans <strong>☁︎ Cloud public auto</strong> → clic sur <strong>📱 QR + lien</strong>.</li>
+            <li>Pointe l'appareil de cette page vers le QR ; clique sur le lien qui s'affiche → cloud activé instantanément.</li>
+          </ol>
+          <p style="margin: 14px 0 0; font-size: 13px; color: var(--text-muted);">Astuce : pas d'autre appareil configuré ? <a href="#" id="onboarding-config-here">Configure le cloud directement ici</a> (un PAT GitHub sera demandé une seule fois).</p>
+        </div>
+      </div>`;
+    document.body.appendChild(dlg);
+    dlg.querySelector('[data-close]').addEventListener('click', () => dlg.close());
+    dlg.querySelector('#onboarding-config-here').addEventListener('click', (e) => {
+      e.preventDefault();
+      dlg.close();
+      openSettingsDialog();
+      setTimeout(() => {
+        const cloudInput = $('#cloud-token-input');
+        cloudInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        cloudInput?.focus();
+      }, 300);
+    });
+  }
+  dlg.showModal();
+}
 
 // ============= CLOUD PULL HELPER =============
 
@@ -2025,15 +2110,40 @@ function hookSettingsDialog() {
       const link = await generateCloudInviteLink();
       const out = $('#cloud-invite-out');
       const help = $('#cloud-invite-help');
+      const qrWrap = $('#cloud-qr-wrap');
+      const qrCanvas = $('#cloud-qr-canvas');
+      const shareBtn = $('#cloud-share-btn');
       out.value = link;
       out.style.display = 'block';
       help.style.display = 'block';
-      help.textContent = '✓ Copiez ce lien et ouvrez-le sur l\'autre appareil. Il pourra écrire vos modifications dans le cloud.';
+      help.textContent = '✓ Scanne le QR depuis l\'autre appareil → cloud activé. Ou copie le lien.';
       help.className = 'settings__small ok';
-      out.focus(); out.select();
+      // Rendu QR
+      try {
+        renderQRToCanvas(qrCanvas, link, { scale: 8, margin: 3 });
+        qrWrap.style.display = 'block';
+      } catch (e) {
+        console.warn('QR render failed:', e.message);
+        qrWrap.style.display = 'none';
+      }
+      // Bouton partager natif si dispo (iOS, macOS Safari, Android Chrome)
+      if (navigator.share) {
+        shareBtn.hidden = false;
+        shareBtn.onclick = async () => {
+          try {
+            await navigator.share({
+              title: 'Trombinoscope — activer le cloud',
+              text: 'Ouvre ce lien sur ce téléphone pour activer la sauvegarde cloud du Trombinoscope.',
+              url: link,
+            });
+          } catch (e) {
+            if (e.name !== 'AbortError') console.warn('Share failed:', e);
+          }
+        };
+      }
+      // Copie auto
       try {
         await navigator.clipboard.writeText(link);
-        help.textContent = '✓ Lien copié dans le presse-papier. Ouvrez-le sur l\'autre appareil pour activer l\'écriture cloud.';
       } catch {}
     } catch (e) {
       const help = $('#cloud-invite-help');
