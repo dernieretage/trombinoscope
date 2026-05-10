@@ -907,6 +907,9 @@ function _renderImpl() {
   empty.hidden = true;
 
   // diff render: rebuild la grille (ok jusqu'à plusieurs milliers)
+  // On animate uniquement le PREMIER render (au boot). Sinon, chaque filtre/tri
+  // déclenche l'anim ce qui est jankant et désorientant.
+  const animate = !STATE._firstRenderDone;
   const frag = document.createDocumentFragment();
   list.forEach((p, i) => {
     const imgs = STATE.imagesByProfile.get(p.id);
@@ -914,9 +917,11 @@ function _renderImpl() {
     const node = STATE.view === 'list'
       ? renderRow(p, { firstImage: first, query: STATE.filters.query, index: i })
       : renderCard(p, { firstImage: first, query: STATE.filters.query, index: i });
+    if (!animate) node.classList.add('no-anim');
     frag.appendChild(node);
   });
   grid.replaceChildren(frag);
+  STATE._firstRenderDone = true;
 }
 
 // ============= PROFIL : OUVRIR / NAV / EDIT =============
