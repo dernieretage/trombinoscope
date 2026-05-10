@@ -36,6 +36,50 @@ export async function getSyncConfig() {
 }
 
 export async function setSyncToken(token) { await setMeta(META_TOKEN, token || null); }
+
+/**
+ * Génère un lien d'invitation contenant le PAT et le Gist ID en base64,
+ * que l'utilisateur peut ouvrir sur un autre appareil pour auto-configurer
+ * la sync sans re-coller le token.
+ */
+export async function generateInviteLink() {
+  const token = await getMeta(META_TOKEN);
+  const gistId = await getMeta(META_GIST_ID);
+  if (!token) throw new Error('Sync non configurée — activez-la d\'abord.');
+  const payload = btoa(JSON.stringify({ t: token, g: gistId, ts: Date.now() }));
+  const url = new URL(window.location.href);
+  url.searchParams.set('activate', payload);
+  url.hash = '';
+  return url.toString();
+}
+
+/**
+ * À appeler au démarrage : si l'URL contient ?activate=xxx, configure
+ * automatiquement la sync et pull immédiatement les données du Gist.
+ * @returns null si pas de paramètre, sinon { activated: true, pulled: {...} }
+ */
+export async function consumeActivateParam() {
+  try {
+    const url = new URL(window.location.href);
+    const activate = url.searchParams.get('activate');
+    if (!activate) return null;
+    const payload = JSON.parse(atob(activate));
+    if (!payload.t) return null;
+    await setMeta(META_TOKEN, payload.t);
+    if (payload.g) await setMeta(META_GIST_ID, payload.g);
+    await setMeta(META_AUTOSYNC, true);
+    // Nettoyer l'URL pour ne pas garder le PAT en historique
+    url.searchParams.delete('activate');
+    history.replaceState(null, '', url.toString());
+    isReady = true;
+    // Pull immédiat
+    const pulled = await pullNow({ replace: true });
+    return { activated: true, pulled };
+  } catch (e) {
+    console.error('[Sync] consumeActivateParam failed:', e.message);
+    return { activated: false, error: e.message };
+  }
+}
 export async function setSyncAutoSync(v) { await setMeta(META_AUTOSYNC, !!v); }
 export async function clearSyncConfig() {
   await setMeta(META_TOKEN, null);

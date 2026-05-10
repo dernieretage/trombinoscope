@@ -20,6 +20,7 @@ import {
   testConnection as testSyncConnection,
   pushNow as syncPushNow, pullNow as syncPullNow,
   setupAutoSync, schedulePush, onSyncStateChange, isSyncReady, diagnoseSync,
+  generateInviteLink, consumeActivateParam,
 } from './sync.js';
 import {
   getAiKey, setAiKey, getAiModel, setAiModel,
@@ -131,6 +132,27 @@ const STATE = {
 
   // Sync init (en arrière-plan, ne bloque pas l'UI)
   setupSyncListeners();
+  // Si l'URL contient ?activate=xxx, auto-config sync + auto-pull (lien magique)
+  consumeActivateParam().then(async (r) => {
+    if (r?.activated && r.pulled) {
+      // Recharger STATE complet
+      STATE.profiles = await getAllProfiles();
+      STATE.imagesByProfile.clear();
+      for (const p of STATE.profiles) {
+        const imgs = await getProfileImages(p.id);
+        if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
+      }
+      buildFilterChips();
+      buildProfessionDatalist();
+      render();
+      window.__updateIgBulkCount?.();
+      updateSyncPill();
+      updateSaveButton();
+      toast(`✓ Sync activée automatiquement : ${r.pulled.profiles} profils + ${r.pulled.images} images chargés.`, { type: 'ok', timeout: 7000 });
+    } else if (r?.activated === false) {
+      toast('Lien d\'invitation invalide : ' + (r.error || 'erreur'), { type: 'err', timeout: 5000 });
+    }
+  });
   setupAutoSync().then(async (ready) => {
     updateSyncPill();
     updateSaveButton();
@@ -1818,6 +1840,31 @@ function hookSettingsDialog() {
       toast(`${r.profiles ?? '?'} profils envoyés vers le cloud.`, { type: 'ok' });
       refreshSettingsView();
     } catch (e) { toast('Push échec : ' + e.message, { type: 'err' }); }
+  });
+
+  $('#sync-invite-btn').addEventListener('click', async () => {
+    try {
+      const link = await generateInviteLink();
+      const out = $('#sync-invite-out');
+      const help = $('#sync-invite-help');
+      out.value = link;
+      out.style.display = 'block';
+      help.style.display = 'block';
+      help.textContent = '✓ Copiez ce lien et ouvrez-le sur l\'autre appareil. Il configurera tout automatiquement (token + récupération des photos).';
+      help.className = 'settings__small ok';
+      // Auto-select pour copier facilement
+      out.focus();
+      out.select();
+      try {
+        await navigator.clipboard.writeText(link);
+        help.textContent = '✓ Lien copié dans le presse-papier ! Ouvrez-le sur l\'autre appareil.';
+      } catch {}
+    } catch (e) {
+      const help = $('#sync-invite-help');
+      help.style.display = 'block';
+      help.textContent = '✗ ' + e.message;
+      help.className = 'settings__small err';
+    }
   });
 
   $('#sync-disconnect-btn').addEventListener('click', async () => {

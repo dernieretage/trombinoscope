@@ -442,6 +442,19 @@
           </div>
         </div>
         <small class="settings__small" id="sync-last-info"></small>
+        <hr class="menu__sep" style="margin: 14px 0;" />
+        <p class="settings__hint" style="margin-top: 0;">
+          📲 <strong>Activer la sync sur un autre appareil</strong> : générez un lien à
+          ouvrir sur l'autre appareil (Chrome, téléphone, etc.) — il configurera tout
+          automatiquement et récupérera vos données + photos.
+        </p>
+        <div class="settings__actions" style="margin-top: 8px;">
+          <button type="button" class="btn btn--primary" id="sync-invite-btn">
+            🔗 Générer un lien d'invitation
+          </button>
+        </div>
+        <textarea id="sync-invite-out" rows="3" readonly style="display:none; margin-top: 8px; width: 100%; font-family: ui-monospace, monospace; font-size: 11px; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); color: var(--text); word-break: break-all;"></textarea>
+        <small id="sync-invite-help" class="settings__small" style="display:none; margin-top: 4px;"></small>
       </section>
 
       <!-- AI Scan -->
