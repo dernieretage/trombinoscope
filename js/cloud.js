@@ -525,6 +525,9 @@ export async function scheduleCloudPush(delayMs = 4000) {
  * non seulement la lecture (déjà publique) mais aussi l'écriture
  * de modifications depuis ce device.
  */
+// Durée de validité d'un lien d'invitation magique (24h)
+const INVITE_LINK_TTL_MS = 24 * 60 * 60 * 1000;
+
 export async function generateCloudInviteLink() {
   const token = await getMeta(META_TOKEN);
   if (!token) throw new Error('Cloud non configuré — activez-le d\'abord.');
@@ -538,18 +541,27 @@ export async function generateCloudInviteLink() {
 /**
  * Au démarrage : si l'URL contient ?cloud=xxx, configure le cloud token
  * automatiquement. Le device pourra ensuite lire ET écrire le cloud public.
+ * Le lien expire après 24h pour limiter les fuites accidentelles via historique.
  */
 export async function consumeCloudActivateParam() {
   try {
     const url = new URL(window.location.href);
     const param = url.searchParams.get('cloud');
     if (!param) return null;
-    const payload = JSON.parse(atob(param));
-    if (!payload.ct) return null;
-    await setMeta(META_TOKEN, payload.ct);
-    await setMeta(META_AUTO, true);
+    // Nettoyer l'URL D'ABORD pour éviter que le PAT reste visible si on est
+    // interrompu par une erreur de parse (sécurité défensive).
     url.searchParams.delete('cloud');
     history.replaceState(null, '', url.toString());
+
+    const payload = JSON.parse(atob(param));
+    if (!payload.ct) return null;
+    // Vérifier l'expiration (24h)
+    if (payload.ts && Date.now() - payload.ts > INVITE_LINK_TTL_MS) {
+      const ageH = Math.round((Date.now() - payload.ts) / 3600000);
+      return { activated: false, error: `Lien expiré (${ageH}h). Demandez un nouveau lien depuis l'appareil source.` };
+    }
+    await setMeta(META_TOKEN, payload.ct);
+    await setMeta(META_AUTO, true);
     return { activated: true };
   } catch (e) {
     console.error('[Cloud] consumeCloudActivateParam failed:', e.message);

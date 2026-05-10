@@ -1,6 +1,6 @@
 // Service worker — network-first pour les pages HTML (évite les ghost old data
 // après déploiement), cache-first pour CSS/JS statiques avec version-busting.
-const VERSION = 'trombinoscope-v35';
+const VERSION = 'trombinoscope-v36';
 const ASSETS = [
   './',
   './index.html',
