@@ -323,6 +323,7 @@ function hookUI() {
     if (a === 'copy-emails') return copyEmailsOfFiltered();
     if (a === 'copy-handles') return copyHandlesOfFiltered();
     if (a === 'seed') return doReSeed();
+    if (a === 'reapply-enrichment') return reapplyEnrichment();
     if (a === 'settings') return openSettingsDialog();
     if (a === 'shortcuts') return openDialog('shortcuts-dialog');
     if (a === 'reset') return doReset();
@@ -1372,6 +1373,29 @@ function triggerImport() {
     }
   });
   input.click();
+}
+
+async function reapplyEnrichment() {
+  const ok = await confirmDialog({
+    title: 'Ré-appliquer les infos web ?',
+    text: `Cela ré-appliquera les infos publiques trouvées en ligne (site, e-mail, bio, agence) ` +
+          `aux profils dont CES champs sont vides. Vos modifications personnelles ne seront PAS écrasées.`,
+    okLabel: 'Appliquer',
+    danger: false,
+  });
+  if (!ok) return;
+  await setMeta('enrichment_last_version', null);
+  const result = await applyEnrichmentIfNew();
+  if (result.applied) {
+    STATE.profiles = await getAllProfiles();
+    buildFilterChips();
+    buildProfessionDatalist();
+    render();
+    toast(`✨ ${result.updated} profils enrichis (v${result.version}).`, { type: 'ok', timeout: 5000 });
+    maybeSchedulePush();
+  } else {
+    toast('Aucune nouvelle info à appliquer.', { type: 'info', timeout: 3000 });
+  }
 }
 
 async function doReSeed() {
