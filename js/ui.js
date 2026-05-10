@@ -388,8 +388,20 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
   notes.contentEditable = 'true';
   notes.spellcheck = true;
   notes.textContent = profile.notes || '';
+  const NOTES_MAX = 5000;
   let notesTimer;
   notes.addEventListener('input', () => {
+    // Limite douce de longueur pour éviter de saturer le cloud avec des notes énormes
+    if (notes.textContent.length > NOTES_MAX) {
+      notes.textContent = notes.textContent.slice(0, NOTES_MAX);
+      // Replacer le caret en fin (pas idéal mais simple)
+      const range = document.createRange();
+      range.selectNodeContents(notes);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
     clearTimeout(notesTimer);
     notesTimer = setTimeout(() => onNotesChange?.(notes.textContent), 350);
   });

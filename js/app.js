@@ -641,6 +641,17 @@ function hookUI() {
     dlg?.close();
   });
 
+  // Click sur backdrop (hors .dialog__inner) → ferme le dialog
+  document.addEventListener('click', (e) => {
+    const dlg = e.target.closest('dialog[open]');
+    if (!dlg) return;
+    // Si on clique sur le dialog lui-même (pas sur un de ses enfants),
+    // c'est qu'on a cliqué sur le backdrop ou hors du contenu .dialog__inner.
+    if (e.target === dlg) {
+      dlg.close();
+    }
+  });
+
   // grid card click delegation (avec quick actions)
   $('#grid').addEventListener('click', (e) => {
     const quick = e.target.closest('[data-quick]');
@@ -664,11 +675,32 @@ function hookUI() {
   $('#tag-bar-clear').addEventListener('click', () => { STATE.filters.tag = ''; render(); });
   $('#tag-bar-active').addEventListener('click', () => { STATE.filters.tag = ''; render(); });
   $('#grid').addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
     const card = e.target.closest('.card, .row');
     if (!card) return;
-    e.preventDefault();
-    openProfileDialog(card.dataset.id);
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openProfileDialog(card.dataset.id);
+      return;
+    }
+    // Navigation au clavier dans la grille (Tab fonctionne déjà mais c'est lent)
+    if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
+      e.preventDefault();
+      const cards = Array.from(document.querySelectorAll('#grid .card, #grid .row'));
+      const idx = cards.indexOf(card);
+      if (idx === -1) return;
+      // Calcule le nombre de colonnes en regardant la position X
+      const cardRect = card.getBoundingClientRect();
+      const firstRowCount = cards.filter(c => Math.abs(c.getBoundingClientRect().top - cards[0].getBoundingClientRect().top) < 5).length;
+      const cols = Math.max(1, firstRowCount);
+      let next = idx;
+      if (e.key === 'ArrowRight') next = Math.min(idx + 1, cards.length - 1);
+      else if (e.key === 'ArrowLeft') next = Math.max(idx - 1, 0);
+      else if (e.key === 'ArrowDown') next = Math.min(idx + cols, cards.length - 1);
+      else if (e.key === 'ArrowUp') next = Math.max(idx - cols, 0);
+      else if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = cards.length - 1;
+      cards[next]?.focus();
+    }
   });
   // context menu (right-click)
   $('#grid').addEventListener('contextmenu', (e) => {
@@ -683,6 +715,40 @@ function hookUI() {
 
   // paste images globally (when not typing in a non-image field)
   document.addEventListener('paste', onPaste);
+
+  // Drop d'images globales : si profile-dialog ouvert → ajoute au profil courant.
+  // Sinon, prévient l'user qu'il faut ouvrir un profil ou créer un nouveau.
+  document.addEventListener('dragover', (e) => {
+    if (e.dataTransfer?.types?.includes('Files')) {
+      e.preventDefault();
+      document.body.classList.add('is-drag-global');
+    }
+  });
+  document.addEventListener('dragleave', (e) => {
+    if (e.target === document.documentElement || !e.relatedTarget) {
+      document.body.classList.remove('is-drag-global');
+    }
+  });
+  document.addEventListener('drop', async (e) => {
+    if (!e.dataTransfer?.files?.length) return;
+    document.body.classList.remove('is-drag-global');
+    // Si le drop arrive dans le edit-dialog dropzone, laisser le handler local gérer
+    if (e.target.closest('#dropzone')) return;
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (!files.length) return;
+    e.preventDefault();
+    if (STATE.current && $('#profile-dialog').open) {
+      // Ajoute au profil ouvert
+      await addImagesToProfile(STATE.current, files);
+      const imgs = await getProfileImages(STATE.current.id);
+      STATE.imagesByProfile.set(STATE.current.id, imgs);
+      openProfileDialog(STATE.current.id);
+      render();
+      toast(`✓ ${files.length} image${files.length > 1 ? 's' : ''} ajoutée${files.length > 1 ? 's' : ''} au profil.`, { type: 'ok' });
+    } else {
+      toast(`Glissez les images directement sur un profil ouvert, ou utilisez le formulaire d'ajout.`, { type: 'info', timeout: 4500 });
+    }
+  });
 
   // bouton "Sauvegarder" — utilise CLOUD PUBLIC en priorité, sinon Gist
   $('#save-btn').addEventListener('click', async () => {
@@ -2223,6 +2289,19 @@ async function openSettingsDialog() {
 function hookSettingsDialog() {
   settingsHooked = true;
   const dlg = $('#settings-dialog');
+
+  // Auto-trim token inputs : un copier-coller depuis Slack/Notion ramène souvent
+  // un espace ou un saut de ligne à la fin → erreurs de connexion confuses.
+  for (const id of ['#cloud-token-input', '#sync-token-input']) {
+    const inp = dlg.querySelector(id);
+    if (inp) {
+      inp.addEventListener('blur', () => { inp.value = inp.value.trim(); });
+      inp.addEventListener('paste', () => {
+        // Le paste fire AVANT que la valeur soit insérée → wait next tick
+        setTimeout(() => { inp.value = inp.value.trim(); }, 0);
+      });
+    }
+  }
 
   // CLOUD PUBLIC (RECOMMANDÉ)
   $('#cloud-test-btn').addEventListener('click', async () => {
