@@ -158,17 +158,27 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans markdown, sans texte autour,
   }
 
   const data = await res.json();
+  // Anthropic stop_reason : 'end_turn' (OK), 'max_tokens' (tronqué), 'stop_sequence', etc.
+  if (data.stop_reason === 'max_tokens') {
+    throw new Error('Réponse IA tronquée (max_tokens atteint). Le profil est trop long ou le modèle a beaucoup détaillé. Réessayez avec un autre modèle.');
+  }
   const blocks = data.content || [];
+  if (!blocks.length) {
+    throw new Error('Réponse IA vide (stop_reason=' + (data.stop_reason || 'inconnu') + ').');
+  }
   let text = '';
   for (const b of blocks) if (b.type === 'text') text += b.text + '\n';
 
+  if (!text.trim()) throw new Error('Réponse IA sans contenu texte.');
+
+  // Trouver le dernier bloc JSON équilibré (l'IA peut écrire du texte avant/après)
   const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Réponse IA non parsable. Réessayez.');
+  if (!match) throw new Error('Réponse IA non parsable (pas de JSON trouvé). Réessayez.');
   let result;
   try {
     result = JSON.parse(match[0]);
   } catch (e) {
-    throw new Error('JSON invalide retourné par l\'IA.');
+    throw new Error(`JSON invalide retourné par l\'IA : ${e.message.slice(0, 100)}. Réessayez.`);
   }
 
   // Nettoyer null littéraux

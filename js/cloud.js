@@ -69,7 +69,9 @@ async function computeHash(str) {
     h = ((h << 5) - h) + str.charCodeAt(i);
     h |= 0;
   }
-  return h.toString(36);
+  // Force unsigned int32 pour éviter les hash négatifs qui rendent les
+  // comparaisons string instables (ex: '-3qbuat' vs '6gtvhg' pour le même contenu).
+  return (h >>> 0).toString(36);
 }
 
 // ============= GITHUB API (write) =============
@@ -361,6 +363,14 @@ export async function pullCloud({ replace = true } = {}) {
       }
     }
 
+    // Sécurité : si > 50% des chunks ont échoué, on n'écrase PAS le local
+    // (mieux vaut garder l'ancienne version complète qu'une version trompeuse à moitié
+    // pleine). Sous 50%, on importe et on signale.
+    if (expectedChunks > 0 && downloadedChunks < Math.ceil(expectedChunks / 2)) {
+      emit({ status: 'error', error: `Pull annulé : seulement ${downloadedChunks}/${expectedChunks} fichiers d'images téléchargés.` });
+      return { success: false, partialFailure: true, downloadedChunks, expectedChunks };
+    }
+
     // 3. Restaurer en local
     emit({ status: 'pulling', message: `Restauration locale…` });
     let result;
@@ -375,6 +385,11 @@ export async function pullCloud({ replace = true } = {}) {
     await setMeta(META_LAST_SYNC, new Date().toISOString());
     await setMeta(META_LAST_HASH, hash);
     emit({ status: 'idle', lastSync: new Date().toISOString() });
+
+    // Si certains chunks ont échoué (mais < 50%), avertir l'utilisateur
+    if (failedChunks > 0) {
+      console.warn(`[Cloud] Pull partiel : ${failedChunks}/${expectedChunks} chunks d'images manquants.`);
+    }
 
     return {
       success: true,

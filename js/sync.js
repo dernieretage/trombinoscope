@@ -219,13 +219,13 @@ export async function testConnection(token) {
 // ============= PUSH / PULL =============
 
 async function computeHash(str) {
-  // crc32-ish simple
+  // crc32-ish simple, unsigned pour éviter les hash négatifs (instables en comparaison)
   let h = 0;
   for (let i = 0; i < str.length; i++) {
     h = ((h << 5) - h) + str.charCodeAt(i);
     h |= 0;
   }
-  return h.toString(36);
+  return (h >>> 0).toString(36);
 }
 
 export async function pushNow() {
