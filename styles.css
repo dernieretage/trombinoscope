@@ -252,6 +252,45 @@ body.is-ready .boot { opacity: 0; visibility: hidden; pointer-events: none; }
 .cta:active { transform: translateY(0); }
 .cta--lg { height: 46px; font-size: 15px; padding: 0 22px; }
 
+/* Bouton "Scanner photos IG" en évidence dans le topbar */
+.igbulkbtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 36px; padding: 0 14px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,.15);
+  font-size: 12px; font-weight: 600;
+  letter-spacing: .01em;
+  box-shadow: 0 6px 18px -6px rgba(220, 39, 67, .55);
+  position: relative;
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), filter var(--t-fast) var(--ease);
+}
+.igbulkbtn svg { width: 14px; height: 14px; }
+.igbulkbtn:hover { transform: translateY(-1px); box-shadow: 0 10px 22px -6px rgba(220, 39, 67, .7); filter: brightness(1.05); }
+.igbulkbtn:active { transform: translateY(0); }
+.igbulkbtn:disabled { opacity: .55; cursor: progress; transform: none; }
+.igbulkbtn__count {
+  background: rgba(0,0,0,.28);
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  font-variant-numeric: tabular-nums;
+  margin-left: 2px;
+}
+.igbulkbtn__count:empty { display: none; }
+.igbulkbtn.is-running {
+  animation: bulkBtnPulse 1.6s var(--ease) infinite;
+}
+@keyframes bulkBtnPulse {
+  0%, 100% { box-shadow: 0 6px 18px -6px rgba(220, 39, 67, .55); }
+  50%      { box-shadow: 0 6px 26px 0 rgba(220, 39, 67, .85); }
+}
+@media (max-width: 880px) {
+  .igbulkbtn__label { display: none; }
+  .igbulkbtn { padding: 0 10px; }
+}
+
 /* Bouton "Sauvegarder" dans le topbar */
 .savebtn {
   display: inline-flex; align-items: center; gap: 6px;

@@ -366,15 +366,43 @@ function hookUI() {
   // paste images globally (when not typing in a non-image field)
   document.addEventListener('paste', onPaste);
 
-  // bouton "Sauvegarder maintenant"
+  // bouton "Sauvegarder" — fait sync si configuré, sinon download JSON
   $('#save-btn').addEventListener('click', async () => {
+    const cfg = await getSyncConfig();
+    if (!cfg.token) {
+      // Fallback : download JSON
+      doExport();
+      const t = toast('Sauvegarde téléchargée. Pour une sync auto cloud, configurez un Gist GitHub dans Réglages.', {
+        type: 'ok', timeout: 5500,
+        action: { label: 'Configurer sync', onClick: () => openSettingsDialog() },
+      });
+      return;
+    }
     try {
       await syncPushNow();
-      toast('Sauvegarde réussie.', { type: 'ok', timeout: 2500 });
+      toast('Sauvegarde cloud réussie.', { type: 'ok', timeout: 2500 });
     } catch (e) {
       toast('Sauvegarde échouée : ' + e.message, { type: 'err', timeout: 5000 });
     }
   });
+
+  // bouton "Scanner photos IG" en évidence
+  const igBulkBtn = $('#ig-bulk-btn');
+  igBulkBtn.addEventListener('click', () => bulkImportInstagramPhotos());
+  // Mettre à jour le badge avec le nombre de profils sans images
+  const updateIgBulkCount = () => {
+    const without = STATE.profiles.filter(p => p.instagram && !STATE.imagesByProfile.get(p.id)?.length).length;
+    const countEl = $('#ig-bulk-count');
+    if (countEl) countEl.textContent = without > 0 ? String(without) : '';
+    igBulkBtn.disabled = without === 0;
+    igBulkBtn.title = without === 0
+      ? 'Tous les profils Instagram ont des images.'
+      : `${without} profil${without > 1 ? 's' : ''} Instagram sans image — clic pour scanner`;
+  };
+  // exposer pour appel après sync/import
+  window.__updateIgBulkCount = updateIgBulkCount;
+  setInterval(updateIgBulkCount, 2000);
+  setTimeout(updateIgBulkCount, 500);
 
   // raccourci clavier ⌘S / Ctrl+S
   document.addEventListener('keydown', (e) => {
@@ -845,7 +873,12 @@ async function importInstagramForProfile(profile, { silent = false } = {}) {
   }
 }
 
-async function bulkImportInstagramPhotos() {
+let bulkRunning = false;
+async function bulkImportInstagramPhotos({ skipConfirm = false } = {}) {
+  if (bulkRunning) {
+    toast('Un bulk est déjà en cours.', { type: 'warn' });
+    return;
+  }
   // Profils avec handle IG mais sans image
   const targets = STATE.profiles.filter(p => p.instagram && !STATE.imagesByProfile.get(p.id)?.length);
   if (!targets.length) {
@@ -853,14 +886,20 @@ async function bulkImportInstagramPhotos() {
     return;
   }
 
-  const ok = await confirmDialog({
-    title: `Importer les photos Instagram pour ${targets.length} profil${targets.length > 1 ? 's' : ''} ?`,
-    text: `Cela peut prendre 30 sec à 2 min. Les services tiers ont des limites de débit. ` +
-          `Vous pouvez fermer cet onglet, le travail reprendra à la prochaine ouverture.`,
-    okLabel: 'Lancer',
-    danger: false,
-  });
-  if (!ok) return;
+  if (!skipConfirm) {
+    const ok = await confirmDialog({
+      title: `Importer les photos Instagram pour ${targets.length} profil${targets.length > 1 ? 's' : ''} ?`,
+      text: `Cela prend environ 5 à 10 secondes par profil (~${Math.ceil(targets.length * 7 / 60)} minutes au total). ` +
+            `Vous pouvez continuer à utiliser l'app. Si Microlink atteint son quota gratuit (50 req/jour), ` +
+            `relancez plus tard.`,
+      okLabel: 'Lancer',
+      danger: false,
+    });
+    if (!ok) return;
+  }
+
+  bulkRunning = true;
+  $('#ig-bulk-btn')?.classList.add('is-running');
 
   const persist = toast(`Bulk IG : 0 / ${targets.length}…`, { type: 'info', timeout: 0 });
   let done = 0, success = 0, totalImages = 0;
@@ -887,8 +926,23 @@ async function bulkImportInstagramPhotos() {
 
   persist.dismiss();
   render();
-  toast(`Bulk IG terminé : ${success}/${targets.length} profils enrichis, ${totalImages} images au total.`, { type: 'ok', timeout: 6000 });
+  bulkRunning = false;
+  $('#ig-bulk-btn')?.classList.remove('is-running');
+  window.__updateIgBulkCount?.();
+  toast(`Bulk IG terminé : ${success}/${targets.length} profils enrichis, ${totalImages} images au total.`, { type: 'ok', timeout: 8000 });
   maybeSchedulePush();
+  return { success, totalImages, totalTargets: targets.length };
+}
+
+// Exposer pour tests externes / pilotage
+if (typeof window !== 'undefined') {
+  window.__bulkImportIG = bulkImportInstagramPhotos;
+  window.__getBulkProgress = () => ({
+    running: bulkRunning,
+    withImages: STATE.profiles.filter(p => STATE.imagesByProfile.get(p.id)?.length).length,
+    total: STATE.profiles.length,
+    withoutImages: STATE.profiles.filter(p => p.instagram && !STATE.imagesByProfile.get(p.id)?.length).length,
+  });
 }
 
 async function addImagesToProfile(profile, files) {
@@ -1393,14 +1447,16 @@ function markClean() {
 async function updateSaveButton() {
   const btn = $('#save-btn');
   if (!btn) return;
+  btn.hidden = false; // toujours visible
   const cfg = await getSyncConfig();
-  if (!cfg.token) {
-    btn.hidden = true;
-    return;
-  }
-  btn.hidden = false;
   btn.classList.remove('is-dirty', 'is-syncing', 'is-error', 'is-saved');
   const label = btn.querySelector('.savebtn__label');
+  if (!cfg.token) {
+    // Pas configuré : propose download JSON
+    if (label) label.textContent = 'Sauvegarder';
+    btn.title = 'Télécharger une sauvegarde JSON. Pour la sync cloud auto, configurez un Gist GitHub dans Réglages.';
+    return;
+  }
   if (dirtyState) { btn.classList.add('is-dirty'); if (label) label.textContent = 'Sauvegarder'; }
   else if (cfg.lastSync) { btn.classList.add('is-saved'); if (label) label.textContent = 'Sauvegardé'; }
   else { if (label) label.textContent = 'Sauvegarder'; }

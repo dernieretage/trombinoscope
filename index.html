@@ -60,7 +60,12 @@
     </div>
 
     <div class="topbar__actions">
-      <button class="savebtn" id="save-btn" type="button" aria-label="Sauvegarder vers GitHub" title="Sauvegarder maintenant (⌘S)" hidden>
+      <button class="igbulkbtn" id="ig-bulk-btn" type="button" aria-label="Scanner toutes les photos Instagram manquantes" title="Récupère photo & posts pour tous les profils sans images">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="17.2" cy="6.8" r="1.1" fill="currentColor"/></svg>
+        <span class="igbulkbtn__label">Scanner photos IG</span>
+        <span class="igbulkbtn__count" id="ig-bulk-count" aria-hidden="true"></span>
+      </button>
+      <button class="savebtn" id="save-btn" type="button" aria-label="Sauvegarder" title="Sauvegarder (⌘S)">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5V4zm3 0v6h8V4M8 14h8" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="savebtn__label">Sauvegarder</span>
         <span class="savebtn__dot" id="save-dot"></span>
