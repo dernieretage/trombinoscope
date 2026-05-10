@@ -155,9 +155,30 @@ const STATE = {
       window.__updateIgBulkCount?.();
       updateSyncPill();
       updateSaveButton();
-      toast(`✓ Cloud public : ${r.profiles} profils + ${r.images}/${r.expectedChunks * 9 || r.images} images chargés.`, { type: 'ok', timeout: 6000 });
+      toast(`✓ Cloud : ${r.profiles} profils + ${r.images} images chargés depuis le cloud public.`, { type: 'ok', timeout: 5000 });
     }
   }).catch((e) => console.warn('[Boot] Cloud auto-pull skipped:', e.message));
+
+  // Polling toutes les 60s : si quelqu'un push depuis un autre appareil, on récupère
+  setInterval(async () => {
+    if (document.hidden) return; // ne pas poll si tab inactive
+    if (dirtyState) return; // ne pas écraser des modifs locales en attente
+    try {
+      const r = await setupCloudAutoPull();
+      if (r?.autoPulled && r.profiles > 0) {
+        STATE.profiles = await getAllProfiles();
+        STATE.imagesByProfile.clear();
+        for (const p of STATE.profiles) {
+          const imgs = await getProfileImages(p.id);
+          if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
+        }
+        buildFilterChips();
+        render();
+        window.__updateIgBulkCount?.();
+        toast(`↻ Cloud mis à jour : ${r.profiles} profils + ${r.images} images.`, { type: 'ok', timeout: 4000 });
+      }
+    } catch {}
+  }, 60_000);
 
   // Si l'URL contient ?activate=xxx, auto-config sync (lien magique)
   consumeActivateParam().then(async (r) => {
