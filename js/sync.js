@@ -21,6 +21,13 @@ let isSyncing = false;
 let isReady = false;
 let listeners = new Set();
 
+// État du quota GitHub : timestamp (ms) jusqu'auquel on s'abstient de pousser
+// Permet d'éviter de spammer l'API quand le rate limit est atteint.
+let quotaResetAt = 0;
+export function isQuotaExhausted() { return Date.now() < quotaResetAt; }
+export function getQuotaResetAt() { return quotaResetAt; }
+export function getQuotaWaitSec() { return Math.max(0, Math.ceil((quotaResetAt - Date.now()) / 1000)); }
+
 export function onSyncStateChange(cb) { listeners.add(cb); return () => listeners.delete(cb); }
 function emit(state) { for (const cb of listeners) try { cb(state); } catch {} }
 
@@ -123,12 +130,19 @@ async function ghFetch(path, opts = {}, retryAttempt = 0) {
     const remaining = res.headers.get('x-ratelimit-remaining');
     const reset = res.headers.get('x-ratelimit-reset');
     if (remaining === '0' && reset) {
-      const wait = Math.max(0, parseInt(reset, 10) * 1000 - Date.now());
+      const resetMs = parseInt(reset, 10) * 1000;
+      const wait = Math.max(0, resetMs - Date.now());
+      // Mémoriser le reset pour faire taire les pushes auto pendant ce délai
+      quotaResetAt = resetMs + 1000; // +1s buffer
       if (wait < 60000 && retryAttempt < 2) {
         await new Promise(r => setTimeout(r, wait + 500));
         return ghFetch(path, opts, retryAttempt + 1);
       }
-      throw new Error(`Quota GitHub atteint, reset dans ${Math.round(wait / 1000)}s.`);
+      const err = new Error(`Quota GitHub atteint, reset dans ${Math.round(wait / 1000)}s.`);
+      err.code = 'QUOTA';
+      err.resetAt = resetMs;
+      err.waitSec = Math.round(wait / 1000);
+      throw err;
     }
     throw new Error('Quota dépassé ou scope manquant (besoin de "gist").');
   }
@@ -458,6 +472,16 @@ export async function schedulePush(delayMs = 4000) {
   // Marquer local comme dirty AVANT le push (pour gérer les conflits)
   await setMeta(META_LOCAL_DIRTY, true);
   if (pushTimer) clearTimeout(pushTimer);
+
+  // Si on est dans une fenêtre de quota épuisé, repousser jusqu'au reset
+  // au lieu de spammer l'API et de générer des erreurs visibles à l'user.
+  let effectiveDelay = delayMs;
+  if (isQuotaExhausted()) {
+    const wait = quotaResetAt - Date.now();
+    effectiveDelay = Math.max(delayMs, wait);
+    console.log(`[Sync] Push reporté de ${Math.round(effectiveDelay / 1000)}s (quota Gist atteint).`);
+  }
+
   pushTimer = setTimeout(async () => {
     pushTimer = null;
     try {
@@ -468,7 +492,14 @@ export async function schedulePush(delayMs = 4000) {
         await setMeta(META_LOCAL_DIRTY, false);
       }
     } catch (e) {
-      console.warn('Auto-push failed:', e.message);
+      console.warn('[Sync] Auto-push failed:', e.message);
+      // Si quota encore atteint, replanifier silencieusement après le reset
+      if (e.code === 'QUOTA' || isQuotaExhausted()) {
+        const retryDelay = Math.max(5000, quotaResetAt - Date.now() + 2000);
+        console.log(`[Sync] Replanification dans ${Math.round(retryDelay / 1000)}s.`);
+        if (pushTimer) clearTimeout(pushTimer);
+        pushTimer = setTimeout(() => schedulePush(0), retryDelay);
+      }
     }
-  }, delayMs);
+  }, effectiveDelay);
 }

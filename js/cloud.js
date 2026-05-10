@@ -26,6 +26,9 @@ const META_AUTO = 'cloud_auto';
 let isSyncing = false;
 let listeners = new Set();
 let pushTimer = null;
+let cloudQuotaResetAt = 0;
+export function isCloudQuotaExhausted() { return Date.now() < cloudQuotaResetAt; }
+export function getCloudQuotaWaitSec() { return Math.max(0, Math.ceil((cloudQuotaResetAt - Date.now()) / 1000)); }
 
 export function onCloudStateChange(cb) { listeners.add(cb); return () => listeners.delete(cb); }
 function emit(state) { for (const cb of listeners) try { cb(state); } catch {} }
@@ -98,8 +101,14 @@ async function ghApiCall(path, opts = {}, retry = 0) {
     const remaining = res.headers.get('x-ratelimit-remaining');
     const reset = res.headers.get('x-ratelimit-reset');
     if (remaining === '0' && reset) {
-      const wait = Math.max(0, parseInt(reset, 10) * 1000 - Date.now());
-      throw new Error(`Quota GitHub atteint (reset dans ${Math.round(wait / 1000)}s).`);
+      const resetMs = parseInt(reset, 10) * 1000;
+      const wait = Math.max(0, resetMs - Date.now());
+      cloudQuotaResetAt = resetMs + 1000;
+      const err = new Error(`Quota GitHub atteint (reset dans ${Math.round(wait / 1000)}s).`);
+      err.code = 'QUOTA';
+      err.resetAt = resetMs;
+      err.waitSec = Math.round(wait / 1000);
+      throw err;
     }
     throw new Error('403 — votre token a-t-il le scope "repo" ou "public_repo" ?');
   }
@@ -423,6 +432,15 @@ export async function setupCloudAutoPull() {
 export function scheduleCloudPush(delayMs = 4000) {
   setMeta(META_LOCAL_DIRTY, true);
   if (pushTimer) clearTimeout(pushTimer);
+
+  // Repousser jusqu'au reset si le quota est épuisé
+  let effectiveDelay = delayMs;
+  if (isCloudQuotaExhausted()) {
+    const wait = cloudQuotaResetAt - Date.now();
+    effectiveDelay = Math.max(delayMs, wait);
+    console.log(`[Cloud] Push reporté de ${Math.round(effectiveDelay / 1000)}s (quota atteint).`);
+  }
+
   pushTimer = setTimeout(async () => {
     pushTimer = null;
     try {
@@ -430,8 +448,15 @@ export function scheduleCloudPush(delayMs = 4000) {
       if (cfg.token && cfg.auto) await pushCloud();
     } catch (e) {
       console.warn('[Cloud] Auto-push failed:', e.message);
+      // Replanifier si quota encore atteint, silencieusement
+      if (e.code === 'QUOTA' || isCloudQuotaExhausted()) {
+        const retryDelay = Math.max(5000, cloudQuotaResetAt - Date.now() + 2000);
+        console.log(`[Cloud] Replanification dans ${Math.round(retryDelay / 1000)}s.`);
+        if (pushTimer) clearTimeout(pushTimer);
+        pushTimer = setTimeout(() => scheduleCloudPush(0), retryDelay);
+      }
     }
-  }, delayMs);
+  }, effectiveDelay);
 }
 
 // ============= LIEN D'INVITATION (partager le token entre devices) =============

@@ -539,7 +539,16 @@ function hookUI() {
         const r = await pushCloud();
         toast(`✓ Cloud public : ${r.profiles} profils + ${r.images} images (${r.chunks} fichiers, ${r.sizeKb} Ko). Visible automatiquement sur tous appareils.`, { type: 'ok', timeout: 6000 });
       } catch (e) {
-        toast('Push cloud échoué : ' + e.message, { type: 'err', timeout: 6000 });
+        if (e.code === 'QUOTA' || /Quota GitHub/.test(e.message)) {
+          const wait = e.waitSec || 60;
+          const min = Math.max(1, Math.round(wait / 60));
+          toast(`⏳ Sauvegarde différée — quota GitHub atteint, réessai auto dans ${min}min.`, {
+            type: 'info', timeout: 6000,
+          });
+          scheduleCloudPush(wait * 1000 + 2000);
+        } else {
+          toast('Push cloud échoué : ' + e.message, { type: 'err', timeout: 6000 });
+        }
       }
       return;
     }
@@ -551,7 +560,17 @@ function hookUI() {
         const imgMsg = r.images ? ` + ${r.images} images (${r.chunks} fichiers)` : '';
         toast(`✓ Sauvegarde Gist : ${r.profiles} profils${imgMsg} (${r.sizeKb} Ko).`, { type: 'ok', timeout: 4500 });
       } catch (e) {
-        toast('Sauvegarde Gist échouée : ' + e.message, { type: 'err', timeout: 6000 });
+        // Quota atteint : non-bloquant, l'auto-retry s'en occupera
+        if (e.code === 'QUOTA' || /Quota GitHub/.test(e.message)) {
+          const wait = e.waitSec || 60;
+          const min = Math.max(1, Math.round(wait / 60));
+          toast(`⏳ Sauvegarde différée — quota Gist atteint, réessai auto dans ${min}min. Astuce : configurez le Cloud public (Réglages) pour éviter ce souci.`, {
+            type: 'info', timeout: 7000,
+          });
+          schedulePush(wait * 1000 + 2000);
+        } else {
+          toast('Sauvegarde Gist échouée : ' + e.message, { type: 'err', timeout: 6000 });
+        }
       }
       return;
     }
@@ -1765,9 +1784,16 @@ function setupSyncListeners() {
         btn.classList.add('is-syncing');
         if (label) label.textContent = 'Réception…';
       } else if (s.status === 'error') {
-        btn.classList.add('is-error');
-        if (label) label.textContent = 'Erreur';
-        btn.title = 'Erreur : ' + s.error;
+        // Erreur de quota = transitoire, auto-retry → on n'affiche pas "Erreur"
+        if (s.error && /Quota GitHub/.test(s.error)) {
+          btn.classList.add('is-dirty');
+          if (label) label.textContent = 'En attente';
+          btn.title = 'Quota Gist atteint — réessai automatique. Astuce : Cloud public sans quota dans Réglages.';
+        } else {
+          btn.classList.add('is-error');
+          if (label) label.textContent = 'Erreur';
+          btn.title = 'Erreur : ' + s.error;
+        }
       } else if (s.status === 'idle' && s.lastSync) {
         markClean();
         btn.classList.add('is-saved');
@@ -1869,9 +1895,16 @@ function setupCloudListeners() {
       btn.classList.add('is-syncing');
       if (label) label.textContent = s.message || 'Récupération…';
     } else if (s.status === 'error') {
-      btn.classList.add('is-error');
-      if (label) label.textContent = 'Erreur';
-      btn.title = 'Erreur : ' + s.error;
+      // Quota ou erreur réseau temporaire = transitoire, on n'alarme pas
+      if (s.error && /Quota GitHub|Réseau injoignable/.test(s.error)) {
+        btn.classList.add('is-dirty');
+        if (label) label.textContent = 'En attente';
+        btn.title = 'Sauvegarde différée — réessai automatique.';
+      } else {
+        btn.classList.add('is-error');
+        if (label) label.textContent = 'Erreur';
+        btn.title = 'Erreur : ' + s.error;
+      }
     } else if (s.status === 'idle' && s.lastSync) {
       markClean();
       btn.classList.add('is-saved');
