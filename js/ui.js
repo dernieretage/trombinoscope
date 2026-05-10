@@ -335,11 +335,17 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
     content.appendChild(bioSec);
   }
 
-  // tarif & dernier contact
-  if (profile.rate || profile.lastContact) {
+  // tarif & dernier contact & agence
+  if (profile.rate || profile.lastContact || profile.agency) {
     const inf = section('Infos pratiques');
     const grid = document.createElement('div');
     grid.className = 'profile__contacts';
+    if (profile.agency) {
+      const a = document.createElement('div');
+      a.className = 'profile__contact';
+      a.innerHTML = '<svg viewBox="0 0 24 24"><path d="M3 9l9-6 9 6v12H3V9z M9 21V12h6v9" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Représenté·e par : <strong>' + escapeHTML(profile.agency) + '</strong></span>';
+      grid.appendChild(a);
+    }
     if (profile.rate) {
       const a = document.createElement('div');
       a.className = 'profile__contact';

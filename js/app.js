@@ -25,6 +25,7 @@ import {
   getAiKey, setAiKey, getAiModel, setAiModel,
   isAiConfigured, scanProfileWithAi, testAiConnection,
 } from './ai.js';
+import { applyEnrichmentIfNew } from './enrichment.js';
 
 // ============= STATE =============
 
@@ -92,6 +93,23 @@ const STATE = {
     }
   }
   STATE.profiles = profiles;
+
+  // Application de l'enrichissement (data/enrichment.json) si nouvelle version
+  try {
+    const enrichResult = await applyEnrichmentIfNew();
+    if (enrichResult.applied && enrichResult.updated > 0) {
+      // Recharger les profils
+      STATE.profiles = await getAllProfiles();
+      console.log(`Enrichment v${enrichResult.version} appliqué : ${enrichResult.updated} profils enrichis.`);
+      setTimeout(() => {
+        toast(`✨ ${enrichResult.updated} profils enrichis automatiquement (sites, e-mails, bios trouvés en ligne).`, {
+          type: 'ok', timeout: 6000,
+        });
+      }, 1000);
+    }
+  } catch (e) {
+    console.warn('Enrichment skipped:', e.message);
+  }
 
   // précharge les premières images de chaque profil pour les vignettes
   for (const p of STATE.profiles) {
@@ -696,6 +714,7 @@ function openEditDialog(profile = null) {
     form.elements.website.value = profile.website || '';
     form.elements.location.value = profile.location || '';
     form.elements.rate.value = profile.rate || '';
+    if (form.elements.agency) form.elements.agency.value = profile.agency || '';
     form.elements.lastContact.value = profile.lastContact || '';
     form.elements.tags.value = (profile.tags || []).join(', ');
     form.elements.notes.value = profile.notes || '';
@@ -764,6 +783,7 @@ function hookEditForm() {
       website: data.website.trim(),
       location: data.location.trim(),
       rate: (data.rate || '').trim(),
+      agency: (data.agency || '').trim(),
       lastContact: data.lastContact || '',
       tags: (data.tags || '').split(',').map(t => t.trim()).filter(Boolean),
       notes: data.notes,

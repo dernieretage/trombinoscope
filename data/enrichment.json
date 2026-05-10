@@ -1,0 +1,500 @@
+{
+  "version": "1.0",
+  "generatedAt": "2026-05-10T11:30:00Z",
+  "description": "Enrichissement des 53 profils via recherche web autonome (5 sub-agents Claude). Champs appliqués UNIQUEMENT si vides côté user (pas de override).",
+  "profiles": {
+    "victoiresimonney": {
+      "name": "Victoire Simonney",
+      "professions": ["Styliste", "Fashion Director", "Creative Consultant"],
+      "website": "https://victoiresimonney.com",
+      "email": "victoire@victoiresimonney.com",
+      "phone": null,
+      "location": "Paris, France",
+      "bio": "Styliste, fashion director et consultante créative basée à Paris. Fashion Director et éditrice de Sixteen Journal, elle a publié dans M le Monde, Dazed, Double, Interview, Vogue US, Vogue Italia et WSJ, et travaillé pour Burberry, Cartier, Chanel, Dior, Hermès, Kenzo, Louis Vuitton et Van Cleef & Arpels.",
+      "tags": ["mode", "éditorial", "luxe", "fashion direction"],
+      "agency": "Trouble Management",
+      "confidence": "high"
+    },
+    "charlesbeugniot": {
+      "name": "Charles Beugniot",
+      "professions": ["Styliste"],
+      "tags": ["mode", "éditorial"],
+      "confidence": "low"
+    },
+    "sinabraetz": {
+      "name": "Sina Braetz",
+      "professions": ["Styliste", "Fashion Director", "Writer"],
+      "email": "contact@schierke.com",
+      "phone": "+49 89 18 95 52 50",
+      "location": "Berlin, Allemagne / Paris, France",
+      "bio": "Originaire du Nord de l'Allemagne, basée entre Berlin, Paris et Los Angeles. Coordinating Fashion Director de Numéro Homme & Femme Berlin, Fräulein et Intersection Magazine. Précédemment Fashion Director de L'Officiel Hommes Germany. A travaillé avec Gucci, Louis Vuitton, Fendi, Boss, Lacoste.",
+      "tags": ["mode", "éditorial", "luxe", "fashion direction"],
+      "agency": "SCHIERKE.HOTTAS Artist Management",
+      "confidence": "high"
+    },
+    "ohcharlz": {
+      "name": "Charlotte Buchal",
+      "professions": ["Styliste", "Designer mode"],
+      "bio": "Designer et styliste, diplômée de ArtEZ University of the Arts (Pays-Bas, 2020). A travaillé comme styliste sur des éditoriaux dont Lampoon Magazine (photographie Peter Kaaden, 2024).",
+      "tags": ["mode", "éditorial", "design"],
+      "confidence": "medium"
+    },
+    "sarah_lespagnol": {
+      "name": "Sarah Lespagnol",
+      "professions": ["Styliste", "Designer mode"],
+      "location": "Paris, France",
+      "bio": "Styliste et créatrice de mode, ancienne ESMOD Paris (2008), créatrice de la marque de prêt-à-porter Ystérike. Plus récemment Style Director chez Balibaris.",
+      "tags": ["mode", "prêt-à-porter", "styling"],
+      "confidence": "medium"
+    },
+    "paulinerobinboniface": {
+      "name": "Pauline Robin-Boniface",
+      "professions": ["Styliste", "Costumière", "Creative Consultant"],
+      "website": "https://paulinerobinboniface.com",
+      "email": "paulinerobinboniface@gmail.com",
+      "location": "Paris, France",
+      "bio": "Styliste, costumière et consultante créative basée à Paris. Diplômée de UAL en Fashion Styling (2019), passée par LVMH (junior fashion stylist) et noyoco. Travaille pour l'éditorial, l'e-commerce, les clips et célébrités. Publiée dans Numéro Netherlands, Glamcult, Schön! et Kunst.",
+      "tags": ["mode", "éditorial", "clip", "costume"],
+      "agency": "WÜL Collective",
+      "confidence": "high"
+    },
+    "faymahoulame": {
+      "name": "Fay Mahoulame",
+      "professions": ["Styliste", "Mannequin"],
+      "website": "https://faystylist.com",
+      "email": "fayline-pro@hotmail.fr",
+      "location": "Paris, France",
+      "bio": "Styliste et mannequin franco-algérienne basée à Paris, diplômée de l'Istituto Marangoni Paris. Signée chez Ford Models, elle travaille principalement comme styliste sur des éditoriaux et lookbooks pour Numero Netherlands, Stella Publication, Tush Magazine et Athletica Magazine.",
+      "tags": ["mode", "éditorial", "modeling"],
+      "agency": "Ford Models",
+      "confidence": "medium"
+    },
+    "claudia.c.cali": {
+      "name": "Claudia C. Cali",
+      "professions": ["Styliste"],
+      "website": "https://www.caliclaudia.com",
+      "email": "cali.c.claudia@gmail.com",
+      "phone": "+33 6 61 16 47 93",
+      "location": "Paris, France",
+      "bio": "Styliste mode basée à Paris. Portfolio incluant des collaborations avec Alpine Stars (lookbooks), Casablanca Beach Club, et des publications comme Carnale et Sick Magazine.",
+      "tags": ["mode", "éditorial", "lookbook"],
+      "confidence": "medium"
+    },
+    "alyseehenot": {
+      "name": "Alizée Hénot",
+      "professions": ["Styliste"],
+      "website": "https://alizeehenot.com",
+      "email": "alizee.henot@gmail.com",
+      "location": "Paris, France",
+      "bio": "Styliste mode freelance basée à Paris, diplômée du Lycée des métiers de la mode Sévigné. Anciennement chez Cosmopolitan et Jalouse. A collaboré avec Law Roach pour Céline Dion. Publiée dans Jalouse, L'Officiel, Télérama, Lula Japan, Duel et Les Inrocks. Clients : Dior, Nike, Sephora, Shiseido, Galeries Lafayette, et clips pour Angèle, Pomme, Stefi Celma.",
+      "tags": ["mode", "éditorial", "clip", "publicité"],
+      "confidence": "high"
+    },
+    "jeanlougignx": {
+      "name": "Jean-Lou Gignx",
+      "confidence": "low"
+    },
+    "louis_portejoie": {
+      "name": "Louis Portejoie",
+      "professions": ["Styliste", "Costumier"],
+      "email": "office.louisportejoie@gmail.com",
+      "location": "Paris, France",
+      "bio": "Styliste et costumier basé en région parisienne. Crédité comme costumier sur des projets dont 'Toutes les deux' (2022), 'La femme à la peau bleue' (2017) et le clip 'Le reste' de Clara Luciani (2021).",
+      "tags": ["mode", "éditorial", "clip", "cinéma", "costume"],
+      "confidence": "medium"
+    },
+    "rbsalome": {
+      "name": "Salomé",
+      "professions": ["Styliste"],
+      "tags": ["mode"],
+      "confidence": "low"
+    },
+    "floredesermet": {
+      "name": "Flore de Sermet",
+      "professions": ["Créatrice de mode", "Styliste", "Designer"],
+      "website": "https://floredesermet.com/",
+      "email": "hello@floredesermet.com",
+      "location": "Bruxelles, Belgique",
+      "bio": "Artiste pluridisciplinaire française originaire d'Agen, formée à l'ESMOD (Bordeaux et Berlin) avec passages chez Namilia et Balenciaga. Fondatrice en 2017 de la marque FLR, axée sur l'upcycling et le slow fashion, basée à Bruxelles.",
+      "tags": ["mode", "upcycling", "slow fashion", "création"],
+      "confidence": "high"
+    },
+    "leoniemauchant": {
+      "name": "Léonie Mauchant",
+      "professions": ["Créatrice de mode", "Designer"],
+      "website": "https://leoniemauchant.com/",
+      "email": "leoniemauchant.contact@gmail.com",
+      "location": "Paris, France",
+      "bio": "Créatrice de mode parisienne, formée à l'École Duperré Paris. Connue pour ses Collant-Jupe (skirted tights) modulables. A travaillé en tant qu'assistante knitwear designer chez Hermès et chez Courrèges.",
+      "tags": ["mode", "création", "knitwear"],
+      "confidence": "high"
+    },
+    "margueritegrandin": {
+      "name": "Marguerite Grandin",
+      "professions": ["Styliste", "Modéliste", "Modiste"],
+      "location": "Paris, France",
+      "bio": "Créatrice parisienne formée en stylisme/modélisme, autodidacte en chapellerie après avoir découvert un matériel de modiste vintage. Conçoit des pièces uniques de headwear destinées au prêt pour shootings éditoriaux et artistes.",
+      "tags": ["mode", "headwear", "millinery", "éditorial"],
+      "confidence": "medium"
+    },
+    "andrea_colace": {
+      "name": "Andrea Colace",
+      "professions": ["Styliste", "Fashion Editor", "Producer"],
+      "location": "Paris, France",
+      "bio": "Styliste italien diplômé en Fashion Design, ayant débuté comme assistant à Londres puis Fashion Editor et coordinateur de production entre Milan et Londres. Aujourd'hui basé à Paris.",
+      "tags": ["mode", "éditorial", "high fashion"],
+      "agency": "WM Management (Milan)",
+      "confidence": "high"
+    },
+    "diane.serfati": {
+      "name": "Diane Serfati",
+      "professions": ["Styliste", "Directrice artistique"],
+      "website": "http://dianeserfati.com/",
+      "email": "serfatidiane@gmail.com",
+      "location": "Paris, France",
+      "bio": "Styliste et directrice artistique née en 1999 à Paris. Bachelor Stylisme-Design à LISAA, actuellement en Master Fashion Image à l'Institut Français de la Mode. Travaille pour Coperni, Mugler, Loewe, Rabanne, Sonia Rykiel et des clips musicaux.",
+      "tags": ["mode", "éditorial", "music video", "minimalisme"],
+      "agency": "L'Avant-Courrier",
+      "confidence": "high"
+    },
+    "chiaraficola": {
+      "name": "Chiara Ficola",
+      "professions": ["Styliste", "Fashion Director", "Consultante"],
+      "website": "https://chiara-ficola.com/",
+      "location": "Paris, France",
+      "bio": "Styliste, consultante et directrice artistique née à Palerme, formée à l'Istituto Europeo di Design (Milan). Fashion Director de CRASH Magazine, ex-Fashion Editor chez D La Repubblica. Collaborations Chanel, Saint Laurent, Marni, Stella McCartney, Valentino.",
+      "tags": ["mode", "éditorial", "luxe", "consulting"],
+      "confidence": "high"
+    },
+    "celeste___andre": {
+      "name": "Céleste André",
+      "professions": ["Styliste", "Casting director"],
+      "location": "Paris, France",
+      "bio": "Styliste freelance et assistante styliste basée à Paris, formée à l'École Duperré. Travaille à temps partiel comme styliste, casting director et assistante direction artistique pour Aleï Journal.",
+      "tags": ["mode", "éditorial", "casting"],
+      "confidence": "medium"
+    },
+    "noemiebeltran": {
+      "name": "Noémie Beltran",
+      "professions": ["Styliste", "Photographe"],
+      "website": "https://noemiebeltran.com/",
+      "email": "noemie.beltran@gmail.com",
+      "phone": "+33 6 72 94 40 25",
+      "location": "Paris, France",
+      "bio": "Photographe et styliste de mode freelance basée à Paris, ex-L'Officiel. Publications dans Harper's Bazaar, Vogue, Instyle, L'Officiel. Clients commerciaux : LVMH, Rolex, Lancôme, L'Oréal, Clarins.",
+      "tags": ["mode", "éditorial", "commercial", "photographie"],
+      "confidence": "high"
+    },
+    "agatheauriffeille": {
+      "name": "Agathe Auriffeille",
+      "professions": ["Styliste", "Costume designer", "Directrice artistique"],
+      "website": "https://www.agatheauriffeille.com/",
+      "email": "contactauriffeille@gmail.com",
+      "location": "Paris / Bordeaux, France",
+      "bio": "Styliste, costume designer et directrice artistique freelance, formée à l'École Supérieure des Beaux-Arts de Bordeaux. Travaille principalement sur des clips musicaux, publicités et campagnes (Angèle, Kungs, Vianney, Louane, MC Solaar, Roméo Elvis, Adidas, Louboutin, Apple, Samsung).",
+      "tags": ["mode", "music video", "costume", "publicité"],
+      "confidence": "high"
+    },
+    "selfina_33": {
+      "name": "Selfina (Schahrazade)",
+      "professions": ["Styliste"],
+      "location": "Paris, France",
+      "bio": "Styliste basée à Paris travaillant principalement avec la scène rap française. Collaborations avec Aya Nakamura (clip 'Baby'), Hamza, J9ueve, Chilla, Kalash, Damso, Koba LaD, SDM, Hornet La Frappe, Jazzy Bazz. Editoriaux pour White Lies Magazine, campagnes Reebok.",
+      "tags": ["mode", "music video", "rap", "éditorial"],
+      "agency": "All About Group",
+      "confidence": "high"
+    },
+    "omrirosengart": {
+      "name": "Omri Rosengart",
+      "professions": ["Photographe", "Réalisateur"],
+      "website": "https://www.omrirosengart.com/",
+      "email": "omri_r@hotmail.com",
+      "location": "Paris, France / Tel Aviv, Israël",
+      "bio": "Photographe et réalisateur franco-israélien, diplômé d'un Master en Fashion, Film & Photography à Paris College of Art où il enseigne. Travaille principalement dans la mode, la publicité et le fine art (Stella McCartney, Dior, L'Occitane, Numéro Netherlands).",
+      "tags": ["mode", "pub", "fashion film", "editorial"],
+      "agency": "Sticks & Stones Agency",
+      "confidence": "high"
+    },
+    "wangave": {
+      "name": "Eva Wang",
+      "professions": ["Réalisatrice", "Photographe"],
+      "location": "Paris, France",
+      "bio": "Réalisatrice et photographe franco-chinoise née à Paris. Travaille la photographie de mode et beauté pour Vogue China, Numero Art, Elle UK, Dior Magazine et des marques de luxe. Son court métrage The Butterfly House a été présenté sur Girls in Film.",
+      "tags": ["mode", "fashion film", "court métrage"],
+      "agency": "Lambert | Lambert",
+      "confidence": "high"
+    },
+    "mizh_u": {
+      "name": "MIZHU",
+      "professions": ["Réalisateur", "VFX Artist"],
+      "bio": "Réalisateur et VFX Artist actif sur Instagram, identifié dans la bio comme Director & VFX Artist.",
+      "tags": ["clip", "vfx"],
+      "confidence": "low"
+    },
+    "jeremiedanon": {
+      "name": "Jérémie Danon",
+      "professions": ["Réalisateur", "Artiste plasticien"],
+      "email": "info@pal-project.com",
+      "phone": "+33 9 84 01 69 85",
+      "location": "Paris, France",
+      "bio": "Né en 1994 à Paris. A étudié la philosophie à la Sorbonne puis aux Beaux-Arts de Paris (ENSBA) et au Fresnoy. Pratique hybride entre fiction et documentaire. Son film 'Plein air' est entré dans la collection du Musée d'Art Moderne de Paris. A coréalisé l'installation vidéo 'Ride' avec Kiddy Smile pour la Biennale de Lyon 2024.",
+      "tags": ["documentaire", "fiction", "art contemporain", "vidéo"],
+      "agency": "Galerie pal project / Galerie Eric Mouchet",
+      "confidence": "high"
+    },
+    "lokma.ne": {
+      "name": "Lokmane",
+      "professions": ["Réalisateur", "Directeur artistique", "Photographe"],
+      "website": "https://www.lokmanearchive.com/",
+      "location": "Paris, France / Tokyo, Japon",
+      "bio": "Réalisateur basé entre Paris et Tokyo, actif depuis 2016. Collabore avec des artistes internationaux, labels et marques de mode pour des clips musicaux et de la direction artistique (Lonepsi, Tarmac, Kream x Ralph Lauren, Dr Martens, Octavio Mai).",
+      "tags": ["clip", "pub", "mode", "fashion film"],
+      "agency": "Nakama",
+      "confidence": "high"
+    },
+    "pauzklop": {
+      "name": "Houssam (Pauz Klop)",
+      "professions": ["Réalisateur"],
+      "tags": ["clip"],
+      "confidence": "low"
+    },
+    "raphaelstora": {
+      "name": "Raphaël Stora",
+      "professions": ["Réalisateur", "Danseur"],
+      "website": "https://www.raphaelstora.com/",
+      "email": "rafaelstora@gmail.com",
+      "location": "Paris, France",
+      "bio": "Ancien danseur hip-hop new style devenu réalisateur. A écrit et réalisé la web-série 'Les promesses du sol' (2017) pour Arte sur la scène hip-hop parisienne. Réalisateur du clip 'Cha-Cha-Cha' de Bonnie Banane (2021). Artiste en résidence au Collectif FAIR-E / CCN de Rennes et de Bretagne.",
+      "tags": ["clip", "documentaire", "danse", "web-série"],
+      "confidence": "high"
+    },
+    "hugocohen": {
+      "name": "Hugo Cohen Sprung",
+      "professions": ["Réalisateur"],
+      "location": "Paris, France",
+      "bio": "Réalisateur ayant étudié à l'École Nationale Supérieure des Beaux-Arts de Paris. Réalise des courts métrages et travaille les nouveaux médias.",
+      "tags": ["court métrage", "fiction"],
+      "confidence": "medium"
+    },
+    "sarsz": {
+      "name": "Sara Szy",
+      "professions": ["Réalisatrice"],
+      "website": "https://www.saraszy.com/",
+      "location": "Paris, France",
+      "bio": "Réalisatrice basée à Paris. Travaille en duo avec Nadia Szy (DOP/réalisatrice). A coréalisé le clip 'Dancing with Ghosts' pour Hania Rani feat. Patrick Watson, ainsi que SIMUERO Colors. Représentée par le studio de production Hiersoir.",
+      "tags": ["clip", "fashion film"],
+      "agency": "Hiersoir",
+      "confidence": "high"
+    },
+    "demi_chat": {
+      "name": "Misha (Demi Chat)",
+      "professions": ["Réalisateur"],
+      "tags": ["clip"],
+      "confidence": "low"
+    },
+    "renaud.labelle": {
+      "name": "Renaud Labelle",
+      "professions": ["Photographe"],
+      "website": "https://renaudlabelle.com/",
+      "location": "Paris, France",
+      "bio": "Photographe parisien spécialisé en mode, éditorial, portrait, campagnes et backstage. A couvert des événements de la Paris Fashion Week (notamment le set de Offset pour Li-Ning). Auteur du livre Street Photographie Vol 1.",
+      "tags": ["mode", "editorial", "portrait", "backstage"],
+      "confidence": "medium"
+    },
+    "tomkleinberg": {
+      "name": "Tom Kleinberg",
+      "professions": ["Réalisateur", "Photographe"],
+      "website": "https://tomkleinberg.com",
+      "email": "contact@tomkleinberg.com",
+      "location": "Paris, France",
+      "bio": "Photographe et réalisateur multidisciplinaire diplômé des Gobelins. Son travail explore la représentation des minorités, notamment les communautés queer et ballroom à Paris et Séoul. Il signe des clips et photographies pour la scène musicale française.",
+      "tags": ["clip", "photo", "documentaire"],
+      "confidence": "high"
+    },
+    "heintzpaul": {
+      "name": "Paul Heintz",
+      "professions": ["Réalisateur", "Artiste plasticien"],
+      "website": "https://paulheintz.fr",
+      "location": "Paris, France",
+      "bio": "Né en 1989 à Saint-Avold. Artiste et réalisateur diplômé des Beaux-Arts de Nancy, des Arts Décoratifs de Paris et du Fresnoy. Lauréat du Prix Révélation Emerige 2019, il développe une pratique mêlant film, son et installation.",
+      "tags": ["cinéma", "art contemporain", "documentaire"],
+      "confidence": "high"
+    },
+    "leilamac": {
+      "name": "Leïla Macaire",
+      "professions": ["Réalisatrice", "Photographe", "Scénariste"],
+      "website": "https://www.leilamacaire.com",
+      "email": "l.stern@vma.fr",
+      "phone": "+33 1 43 17 37 37",
+      "location": "Paris, France",
+      "bio": "Réalisatrice, scénariste et photographe française formée à l'École de la Cité et à Paris Diderot VII. A réalisé les courts métrages 'Cut Cut' (2018), '1er Février' (2021) et 'Des Tresses' (2022), primés en festivals internationaux.",
+      "tags": ["clip", "court métrage", "photo", "documentaire"],
+      "agency": "VMA (Voyez Mon Agent)",
+      "confidence": "high"
+    },
+    "schaubiz": {
+      "name": "Mathilde Schaub",
+      "professions": ["Réalisatrice", "Directrice artistique", "Styliste"],
+      "location": "Paris, France",
+      "bio": "Artiste pluridisciplinaire franco-chilienne basée à Paris, formée aux Ateliers de Sèvres puis à Central Saint Martins (Londres). Travaille comme réalisatrice, directrice artistique, styliste et designer.",
+      "tags": ["clip", "court métrage", "mode", "art"],
+      "confidence": "medium"
+    },
+    "vitali_akimov": {
+      "name": "Vitalii Akimov",
+      "professions": ["Réalisateur", "Directeur de la photographie", "Documentariste"],
+      "website": "https://vitalyakimov.com",
+      "email": "vitaliakimov.doc@gmail.com",
+      "location": "Paris, France",
+      "bio": "Réalisateur, directeur de la photographie et photographe né à Arsenyev (Russie), aujourd'hui basé à Paris. Travaille dans le documentaire, la mode et le clip avec une esthétique poétique et documentaire. Connu pour 'A Boy', le clip 'Ray of Solar' de Swedish House Mafia et 'Impasse'.",
+      "tags": ["clip", "pub", "documentaire"],
+      "confidence": "high"
+    },
+    "baloji": {
+      "name": "Baloji",
+      "professions": ["Réalisateur", "Musicien", "Directeur artistique", "Poète"],
+      "email": "reception@academyfilms.com",
+      "phone": "+44 20 7395 4155",
+      "location": "Gand, Belgique",
+      "bio": "Artiste belgo-congolais né à Lubumbashi (RDC) et basé en Belgique. Musicien, poète, designer et réalisateur, il a remporté le Prix de la Nouvelle Voix à Un Certain Regard (Cannes 2023) pour son premier long métrage 'Augure'. Président du jury de la Caméra d'Or à Cannes 2024.",
+      "tags": ["cinéma", "clip", "musique"],
+      "agency": "Academy Films (London)",
+      "confidence": "high"
+    },
+    "naiacombary": {
+      "name": "Naïa Combary",
+      "professions": ["Réalisatrice", "Photographe", "Directrice artistique"],
+      "website": "https://www.naiacombary.com",
+      "location": "Paris, France",
+      "bio": "Réalisatrice et artiste pluridisciplinaire diplômée des Arts Décoratifs de Paris. Réalise des clips et visuels pour la scène musicale française (Bonnie Banane, Tshegu, Pollux, Timothée Joly) et travaille pour des marques comme YSL Beauty, Lancôme, Louboutin Beauty et Dior.",
+      "tags": ["clip", "pub", "beauty"],
+      "agency": "HENRY",
+      "confidence": "high"
+    },
+    "ojoz": {
+      "name": "OJOZ",
+      "professions": ["Photographe", "Réalisateur"],
+      "website": "https://ojoz.fr",
+      "email": "ojoz.yutaka@gmail.com",
+      "phone": "+33 9 53 28 46 58",
+      "location": "Paris, France",
+      "bio": "Photographe et réalisateur français né en 1989, originaire de Guyane française et basé à Paris. Influencé par la culture américaine, il collabore avec des figures majeures de la musique et de la mode (Jordan, Levi's, Pigalle, BAARA, Emergence Magazine).",
+      "tags": ["photo", "clip", "pub", "mode"],
+      "agency": "Birth Image",
+      "confidence": "high"
+    },
+    "alixbortoli": {
+      "name": "Alix Bortoli",
+      "professions": ["Réalisatrice", "Directrice artistique", "Set designer", "Animatrice"],
+      "website": "https://www.alixbortoli.com",
+      "location": "Londres, Royaume-Uni / Paris",
+      "bio": "Réalisatrice et set designer française basée à Londres, formée en illustration à Central Saint Martins puis en animation expérimentale au Royal College of Art. Conçoit des films sculpturaux faits main pour Chanel, Loewe, Hermès, Dior, Nike, Vogue. Lauréate British Vogue & YouTube Future Visionaries 2022.",
+      "tags": ["pub", "mode", "animation", "court métrage"],
+      "agency": "Soixante Quinze (75 Production, Paris)",
+      "confidence": "high"
+    },
+    "pierre.boissel": {
+      "name": "Pierre Boissel",
+      "professions": ["Réalisateur", "Photographe"],
+      "website": "https://pierreboissel.com",
+      "location": "Paris, France",
+      "bio": "Photographe et réalisateur basé à Paris, formé à GOBELINS Paris. A co-réalisé le clip 'Le Remède' de Luidji (2019) et développe une pratique conjointe en photographie et réalisation de clips musicaux.",
+      "tags": ["clip", "photo"],
+      "confidence": "medium"
+    },
+    "kidhao": {
+      "name": "Kid Hao (Melvyn Nganga)",
+      "professions": ["Réalisateur", "Photographe", "Directeur artistique"],
+      "website": "https://www.kidhao.net/",
+      "location": "Paris, France",
+      "bio": "Photographe et réalisateur français, fondateur de Kidhao. A passé 4 ans chez Warner Music France et collaboré avec Adidas, Universal Music, Puma, Sony Music et Canon. Nommé au Forbes 30 Under 30 Europe 2025.",
+      "tags": ["clip", "pub", "photo", "fashion film"],
+      "confidence": "high"
+    },
+    "antoine_zago_h": {
+      "name": "Antoine Zago-Honnorat",
+      "professions": ["Réalisateur"],
+      "website": "https://vimeo.com/user163211480",
+      "location": "Toulouse, France",
+      "bio": "Réalisateur basé à Toulouse, spécialisé dans les productions audiovisuelles dynamiques (parkour/freerun). A réalisé 'La Cité des Violettes' pour le Toulouse FC ainsi que des clips dont 'Insolent 5' pour Bigflo & Oli, principalement avec MAAD Films.",
+      "tags": ["clip", "pub", "film"],
+      "agency": "MAAD Films",
+      "confidence": "high"
+    },
+    "nathan_ghali": {
+      "name": "Nathan Ghali",
+      "professions": ["Réalisateur", "Artiste"],
+      "website": "http://nathanghali.com/en/",
+      "location": "Paris, France",
+      "bio": "Artiste contemporain et réalisateur diplômé des Beaux-Arts de Paris (DNSEP, 2025) et de l'École d'Arts de Cergy. Pratique située entre art vidéo et cinéma, mêlant animation 3D et photographie. Son film 'Les animaux vont mieux' (2024) a été présenté à la Berlinale Shorts.",
+      "tags": ["cinéma", "art vidéo", "animation 3D", "court-métrage"],
+      "confidence": "high"
+    },
+    "juanawein_": {
+      "name": "Juana Wein",
+      "professions": ["Réalisatrice", "Photographe"],
+      "website": "https://juanawein.com/",
+      "location": "Paris, France",
+      "bio": "Réalisatrice et photographe née à Buenos Aires et basée à Paris. Explore et crée des univers visuels poétiques et imaginaires en proposant de nouvelles formes de narration. Travaille en cinéma, clip et photographie.",
+      "tags": ["clip", "cinéma", "photo"],
+      "confidence": "high"
+    },
+    "david_camarou": {
+      "name": "David Camarou",
+      "professions": ["Réalisateur", "Assistant réalisateur"],
+      "location": "France",
+      "bio": "Réalisateur et assistant réalisateur français. Crédité comme assistant réalisateur sur 'Le Royaume des Aveugles' de François Robic. Connu pour 'History of Darkness' (2025) et 'Loynes' (2025).",
+      "tags": ["cinéma", "court-métrage"],
+      "confidence": "medium"
+    },
+    "camus_valat": {
+      "name": "Camus Valat",
+      "professions": ["Producteur", "Agent", "Directeur de création"],
+      "website": "https://camusvalat.com/",
+      "location": "Paris, France",
+      "bio": "Agent, producteur exécutif et fondateur de CAMUS CREATIVES et de l'agence ODBR. Représente photographes et talents urbains émergents. A coordonné des productions pour Corona durant Paris 2024 et Purple Matters pendant la Paris Fashion Week.",
+      "tags": ["production", "agent", "PR", "art"],
+      "agency": "CAMUS CREATIVES / ODBR (fondateur)",
+      "confidence": "medium"
+    },
+    "alexrash__": {
+      "name": "Alexander Keyes Rash",
+      "professions": ["Filmmaker", "DJ", "Directeur artistique"],
+      "website": "http://www.alexanderkeyes.com/",
+      "location": "Paris, France",
+      "bio": "Américain installé à Paris depuis environ cinq ans, ancien étudiant de Sciences Po Aix. Esthète mêlant influences 1930s et 1980s : DJ, filmmaker, marathonien et collaborateur de la maison de ventes Binoche & Giquello. Dirige le Serpent à Plume à Paris.",
+      "tags": ["film", "DJ", "art direction"],
+      "confidence": "medium"
+    },
+    "2tiret": {
+      "name": "Adam Nestoret-Puyon (2tiret)",
+      "professions": ["Réalisateur", "Photographe", "Directeur de création"],
+      "website": "https://www.adamnestoretpuyon.com/",
+      "email": "adamnstrt@gmail.com",
+      "location": "Saint-Maur-des-Fossés, France",
+      "bio": "Photographe, réalisateur et directeur de création connu sous le pseudonyme 2tiret. A signé la campagne 'Re-Source' pour Adidas Originals & Adidas Paris et collaboré avec Aprilia ('Virée nocturne'). Représenté pour certains projets par KO Collective.",
+      "tags": ["clip", "pub", "photo", "campagne"],
+      "agency": "KO Collective",
+      "confidence": "high"
+    },
+    "shadenadela": {
+      "name": "Shaden Adela Safieddine Tazi",
+      "professions": ["Réalisatrice", "Scénariste", "Mannequin"],
+      "location": "Maroc / Liban",
+      "bio": "Réalisatrice et scénariste maroco-libanaise, également mannequin (Heroes Models, Blow Models, Oui Management). A réalisé le court-métrage 'Un jour tout va disparaître' (2024, 17 min) tourné chez ses grands-parents à Marrakech, avec Pascal Greggory. Co-fondatrice de The Soho Film Club.",
+      "tags": ["cinéma", "court-métrage", "fashion"],
+      "agency": "Heroes Models / Oui Management (mannequinat)",
+      "confidence": "high"
+    },
+    "leonardvernhet": {
+      "name": "Léonard Vernhet",
+      "professions": ["Directeur artistique", "Réalisateur", "Éditeur"],
+      "website": "https://epoch-review.com/",
+      "email": "hello@epoch-review.com",
+      "location": "Paris, France",
+      "bio": "Directeur artistique et réalisateur multidisciplinaire. Cofondateur d'Epoch Review (avec Francesca Gavin) et de Permanent Files (avec Ramdane Touhami), ancien cofondateur d'Ill-Studio. A collaboré avec Moncler, Bottega Veneta, On Running, Carhartt, Adidas, Saint Laurent, Rimowa, Nike, The North Face et Vogue Italia.",
+      "tags": ["pub", "fashion film", "édition", "art direction"],
+      "confidence": "high"
+    }
+  }
+}
