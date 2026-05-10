@@ -247,6 +247,20 @@ body.is-ready .boot { opacity: 0; visibility: hidden; pointer-events: none; }
   to { transform: rotate(-360deg); }
 }
 
+/* Drag global indicator (drop d'image n'importe où) */
+body.is-drag-global::after {
+  content: 'Glissez sur un profil ouvert pour ajouter ses photos';
+  position: fixed; inset: 0;
+  display: grid; place-items: center;
+  background: color-mix(in oklab, var(--accent) 25%, transparent);
+  border: 4px dashed var(--accent);
+  pointer-events: none; z-index: 999;
+  font-size: 18px; font-weight: 600;
+  color: var(--text);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
 /* ============================================================
    ONBOARDING BANNER (appareil sans token cloud)
    ============================================================ */
