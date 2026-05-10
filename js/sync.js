@@ -148,8 +148,9 @@ export async function pushNow() {
     });
     await setMeta(META_LAST_SYNC, new Date().toISOString());
     await setMeta(META_LAST_REMOTE_HASH, hash);
+    await setMeta(META_LOCAL_DIRTY, false);
     emit({ status: 'idle', lastSync: new Date().toISOString() });
-    return { success: true, profiles: data.profiles?.length };
+    return { success: true, profiles: data.profiles?.length, gistId: id, sizeKb: Math.round(content.length / 1024) };
   } catch (e) {
     emit({ status: 'error', error: e.message });
     throw e;
@@ -195,6 +196,12 @@ export async function pullNow({ replace = true } = {}) {
 
 // ============= AUTO-SYNC =============
 
+const META_LOCAL_DIRTY = 'sync_local_dirty';
+
+export async function markLocalDirty() {
+  await setMeta(META_LOCAL_DIRTY, true);
+}
+
 export async function setupAutoSync() {
   const cfg = await getSyncConfig();
   if (!cfg.token) { isReady = false; return false; }
@@ -203,21 +210,44 @@ export async function setupAutoSync() {
   // Pull au démarrage si data distante plus récente
   if (cfg.autoSync) {
     try {
-      const localProfiles = await getAllProfiles();
       const id = await findOrCreateGist();
       const gist = await ghFetch(`/gists/${id}`);
       const remoteUpdated = gist.updated_at;
       const lastSync = cfg.lastSync;
-      // Si pas de last sync, ou si remote > last sync, pull
-      const remoteIsNewer = !lastSync || new Date(remoteUpdated) > new Date(lastSync);
-      if (remoteIsNewer) {
-        const file = gist.files?.[GIST_FILENAME];
-        if (file && file.size > 100) {
-          // Si local n'est pas vide, demander confirmation (laissé à l'app)
-          if (localProfiles.length > 0) {
-            emit({ status: 'remote-newer', remoteUpdated, gistId: id });
-          } else {
-            await pullNow({ replace: true });
+      const file = gist.files?.[GIST_FILENAME];
+      const localDirty = await getMeta(META_LOCAL_DIRTY);
+
+      // Récupérer le contenu remote pour décider
+      if (file && file.size > 100) {
+        let remoteContent = file.content;
+        if (file.truncated && file.raw_url) {
+          remoteContent = await fetch(file.raw_url).then(r => r.text());
+        }
+        let remoteData;
+        try { remoteData = JSON.parse(remoteContent); } catch { remoteData = null; }
+
+        // Si data distante non vide, vérifier si on doit pull
+        if (remoteData?.profiles?.length) {
+          const remoteHash = await computeHash(remoteContent);
+          const lastRemoteHash = await getMeta(META_LAST_REMOTE_HASH);
+
+          // Cas où on doit pull silencieusement :
+          // 1. Pas de last sync (premier démarrage avec sync activée)
+          // 2. Hash distant différent du dernier hash connu (modif sur autre device)
+          // 3. local pas dirty (l'user n'a rien modifié depuis le dernier pull)
+          const needsPull = !lastSync || (remoteHash !== lastRemoteHash);
+
+          if (needsPull) {
+            if (!localDirty) {
+              // Pull silencieux — local n'a pas été modifié
+              emit({ status: 'pulling', message: 'Récupération des données distantes…' });
+              await pullNow({ replace: true });
+              await setMeta(META_LOCAL_DIRTY, false);
+              emit({ status: 'pulled-silent', profiles: remoteData.profiles.length });
+            } else {
+              // Conflit : local et remote ont changé
+              emit({ status: 'remote-newer', remoteUpdated, gistId: id, remoteProfiles: remoteData.profiles.length });
+            }
           }
         }
       }
@@ -229,13 +259,19 @@ export async function setupAutoSync() {
   return true;
 }
 
-export function schedulePush(delayMs = 4000) {
+export async function schedulePush(delayMs = 4000) {
+  // Marquer local comme dirty AVANT le push (pour gérer les conflits)
+  await setMeta(META_LOCAL_DIRTY, true);
   if (pushTimer) clearTimeout(pushTimer);
   pushTimer = setTimeout(async () => {
     pushTimer = null;
     try {
       const cfg = await getSyncConfig();
-      if (cfg.token && cfg.autoSync) await pushNow();
+      if (cfg.token && cfg.autoSync) {
+        await pushNow();
+        // Une fois pushé, plus dirty
+        await setMeta(META_LOCAL_DIRTY, false);
+      }
     } catch (e) {
       console.warn('Auto-push failed:', e.message);
     }

@@ -1492,7 +1492,7 @@ function setupSyncListeners() {
         if (label) label.textContent = 'Sauvegarde…';
       } else if (s.status === 'pulling') {
         btn.classList.add('is-syncing');
-        if (label) label.textContent = 'Sync…';
+        if (label) label.textContent = 'Réception…';
       } else if (s.status === 'error') {
         btn.classList.add('is-error');
         if (label) label.textContent = 'Erreur';
@@ -1507,11 +1507,37 @@ function setupSyncListeners() {
         }, 3000);
       }
     }
+    if (s.status === 'pulled-silent') {
+      // Pull silencieux réussi (nouveau device qui a chargé les data du Gist)
+      STATE.profiles = await getAllProfiles();
+      STATE.imagesByProfile.clear();
+      for (const p of STATE.profiles) {
+        const imgs = await getProfileImages(p.id);
+        if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
+      }
+      buildFilterChips();
+      buildProfessionDatalist();
+      render();
+      window.__updateIgBulkCount?.();
+      toast(`✓ Données synchronisées : ${s.profiles} profils chargés depuis le cloud.`, { type: 'ok', timeout: 4000 });
+    }
     if (s.status === 'remote-newer') {
-      toast('Données distantes plus récentes — voulez-vous les récupérer ?', {
-        type: 'info', timeout: 0,
-        action: { label: 'Récupérer', onClick: async () => {
-          try { await syncPullNow({ replace: true }); STATE.profiles = await getAllProfiles(); buildFilterChips(); render(); toast('Sync : profils mis à jour.', { type: 'ok' }); }
+      toast(`Conflit : ${s.remoteProfiles} profils distants vs vos modifs locales. Que faire ?`, {
+        type: 'warn', timeout: 0,
+        action: { label: 'Récupérer le cloud', onClick: async () => {
+          try {
+            await syncPullNow({ replace: true });
+            STATE.profiles = await getAllProfiles();
+            STATE.imagesByProfile.clear();
+            for (const p of STATE.profiles) {
+              const imgs = await getProfileImages(p.id);
+              if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
+            }
+            buildFilterChips();
+            render();
+            window.__updateIgBulkCount?.();
+            toast('Sync : profils mis à jour depuis le cloud.', { type: 'ok' });
+          }
           catch (e) { toast('Sync échec : ' + e.message, { type: 'err' }); }
         }},
       });
@@ -1604,11 +1630,19 @@ function hookSettingsDialog() {
     out.textContent = 'Test en cours…'; out.className = 'settings__small';
     try {
       const u = await testSyncConnection(token);
-      out.textContent = `✓ Connecté en tant que @${u.login}. Token enregistré.`;
+      out.textContent = `✓ Connecté en tant que @${u.login}. Push initial vers le cloud…`;
       out.className = 'settings__small ok';
       await setSyncToken(token);
+      // Push immédiat pour pousser TOUT vers le Gist (état actuel = source de vérité initiale)
+      try {
+        const r = await syncPushNow();
+        out.textContent = `✓ @${u.login} — ${r.profiles} profils sauvegardés (${r.sizeKb} Ko). Sync auto activée.`;
+      } catch (pushErr) {
+        out.textContent = `✓ @${u.login} connecté — mais push initial échoué : ${pushErr.message}`;
+      }
       await setupAutoSync();
       updateSyncPill();
+      updateSaveButton();
       refreshSettingsView();
     } catch (e) {
       out.textContent = '✗ ' + e.message;
