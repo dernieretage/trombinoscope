@@ -355,11 +355,17 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
     if (profile.lastContact) {
       const a = document.createElement('div');
       a.className = 'profile__contact';
+      // Comparaison à minuit local (et non UTC) pour éviter le bug "hier"
+      // qui s'affiche encore comme "aujourd'hui" autour de minuit.
       const d = new Date(profile.lastContact);
-      const days = Math.round((Date.now() - d.getTime()) / 86400000);
-      const since = days <= 0 ? 'aujourd\'hui' : days === 1 ? 'hier' : days < 30 ? `il y a ${days} j` : days < 365 ? `il y a ${Math.round(days / 30)} mois` : `il y a ${Math.round(days / 365)} an${days >= 730 ? 's' : ''}`;
-      a.innerHTML = `<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span>Dernier contact : ${escapeHTML(fmtDate(profile.lastContact))} (${since})</span>`;
-      grid.appendChild(a);
+      if (!isNaN(d.getTime())) {
+        const todayMid = new Date(); todayMid.setHours(0, 0, 0, 0);
+        const dMid = new Date(d); dMid.setHours(0, 0, 0, 0);
+        const days = Math.round((todayMid.getTime() - dMid.getTime()) / 86400000);
+        const since = days < 0 ? 'à venir' : days === 0 ? 'aujourd\'hui' : days === 1 ? 'hier' : days < 30 ? `il y a ${days} j` : days < 365 ? `il y a ${Math.round(days / 30)} mois` : `il y a ${Math.round(days / 365)} an${days >= 730 ? 's' : ''}`;
+        a.innerHTML = `<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span>Dernier contact : ${escapeHTML(fmtDate(profile.lastContact))} (${since})</span>`;
+        grid.appendChild(a);
+      }
     }
     inf.appendChild(grid);
     content.appendChild(inf);

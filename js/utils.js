@@ -140,8 +140,9 @@ export function fmtDate(iso) {
   if (!iso) return '';
   try {
     const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—'; // date invalide explicite (vs vide silencieux)
     return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
-  } catch { return ''; }
+  } catch { return '—'; }
 }
 
 // Redimensionne / compresse une image (avant stockage)
