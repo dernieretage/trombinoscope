@@ -389,26 +389,28 @@
       <!-- Sync GitHub Gist -->
       <section class="settings__section">
         <header>
-          <h3>Synchronisation cross-device</h3>
+          <h3>☁️ Synchronisation cross-device</h3>
           <span class="settings__badge" id="sync-status-badge">Désactivée</span>
         </header>
         <p class="settings__hint">
-          Vos données restent privées : elles sont stockées dans un <strong>Gist GitHub privé</strong> de votre compte
-          et synchronisées automatiquement avec tous vos appareils.
+          Sauvegarde automatique de tous vos profils + photos dans <strong>VOTRE</strong> compte GitHub
+          (gist privé). Pas de tiers, pas de serveur. Synchronise tous vos appareils.
         </p>
-        <ol class="settings__steps">
-          <li>
-            Ouvrez <a href="https://github.com/settings/tokens?type=beta&description=Trombinoscope&scopes=gist" target="_blank" rel="noopener">github.com/settings/tokens (Tokens classic)</a>
-            puis « Generate new token (classic) ».
-          </li>
-          <li>Cochez <strong>uniquement</strong> le scope <code>gist</code>. Choisissez une expiration (jamais ou 1 an).</li>
-          <li>Copiez-collez le token ci-dessous.</li>
-        </ol>
+        <div class="settings__cta">
+          <a class="btn btn--primary" href="https://github.com/settings/tokens/new?description=Trombinoscope%20sync&scopes=gist" target="_blank" rel="noopener" style="text-decoration: none;">
+            ① Ouvrir GitHub pour créer un token (1 min)
+          </a>
+        </div>
+        <p class="settings__hint" style="margin-top: 12px;">
+          La page GitHub s'ouvre avec le scope <code>gist</code> déjà coché.
+          Choisissez une expiration (« No expiration » recommandé), cliquez « Generate token »,
+          puis <strong>copiez-collez le token ci-dessous</strong> :
+        </p>
         <label class="field">
-          <span>Personal Access Token (gist scope)</span>
+          <span>② Personal Access Token (commence par ghp_)</span>
           <div style="display:flex; gap:6px;">
-            <input id="sync-token-input" type="password" placeholder="ghp_…" autocomplete="off" />
-            <button type="button" class="btn btn--ghost" id="sync-test-btn">Tester</button>
+            <input id="sync-token-input" type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" />
+            <button type="button" class="btn btn--primary" id="sync-test-btn">③ Activer</button>
           </div>
           <small id="sync-test-result" class="settings__small"></small>
         </label>

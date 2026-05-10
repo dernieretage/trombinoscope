@@ -326,6 +326,17 @@ body.is-ready .boot { opacity: 0; visibility: hidden; pointer-events: none; }
   color: var(--ok);
   border-color: color-mix(in oklab, var(--ok) 40%, var(--line-strong));
 }
+.savebtn.is-unconfigured {
+  background: color-mix(in oklab, var(--accent) 18%, var(--bg-elev));
+  color: var(--text);
+  border-color: color-mix(in oklab, var(--accent) 60%, var(--line-strong));
+  font-weight: 600;
+}
+.savebtn.is-unconfigured .savebtn__dot {
+  display: inline-block;
+  background: var(--accent);
+  animation: savebtnPulse 1.6s var(--ease) infinite;
+}
 @keyframes savebtnPulse {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 60%, transparent); }
   50%      { box-shadow: 0 0 0 6px color-mix(in oklab, var(--accent) 0%, transparent); }
@@ -967,6 +978,20 @@ dialog[open] .dialog__inner {
 }
 .settings__small.ok { color: var(--ok); }
 .settings__small.err { color: var(--danger); }
+
+.settings__cta {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0;
+}
+.settings__cta .btn--primary {
+  height: 44px;
+  font-size: 14px;
+  padding: 0 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 
 /* AI scan result */
 .ai-scan__body { padding: 18px 22px; max-height: 60vh; overflow-y: auto; }

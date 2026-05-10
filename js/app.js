@@ -367,21 +367,36 @@ function hookUI() {
   // paste images globally (when not typing in a non-image field)
   document.addEventListener('paste', onPaste);
 
-  // bouton "Sauvegarder" — fait sync si configuré, sinon download JSON
+  // bouton "Sauvegarder" — comportement intelligent
   $('#save-btn').addEventListener('click', async () => {
     const cfg = await getSyncConfig();
     if (!cfg.token) {
-      // Fallback : download JSON
-      doExport();
-      const t = toast('Sauvegarde téléchargée. Pour une sync auto cloud, configurez un Gist GitHub dans Réglages.', {
-        type: 'ok', timeout: 5500,
-        action: { label: 'Configurer sync', onClick: () => openSettingsDialog() },
+      // Pas configuré : ouvrir direct le modal Réglages avec focus sur la section sync
+      openSettingsDialog();
+      // Highlight la section sync
+      setTimeout(() => {
+        const dlg = $('#settings-dialog');
+        if (dlg?.open) {
+          const syncInput = $('#sync-token-input');
+          syncInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          syncInput?.focus();
+          // Pulse visuel
+          const section = syncInput?.closest('.settings__section');
+          if (section) {
+            section.style.transition = 'box-shadow .4s';
+            section.style.boxShadow = '0 0 0 3px var(--accent)';
+            setTimeout(() => { section.style.boxShadow = ''; }, 1500);
+          }
+        }
+      }, 300);
+      toast('Configurez la sync GitHub pour des sauvegardes auto cross-device.', {
+        type: 'info', timeout: 5000,
       });
       return;
     }
     try {
       await syncPushNow();
-      toast('Sauvegarde cloud réussie.', { type: 'ok', timeout: 2500 });
+      toast('✓ Sauvegarde cloud réussie.', { type: 'ok', timeout: 2500 });
     } catch (e) {
       toast('Sauvegarde échouée : ' + e.message, { type: 'err', timeout: 5000 });
     }
@@ -1554,17 +1569,17 @@ async function updateSaveButton() {
   if (!btn) return;
   btn.hidden = false; // toujours visible
   const cfg = await getSyncConfig();
-  btn.classList.remove('is-dirty', 'is-syncing', 'is-error', 'is-saved');
+  btn.classList.remove('is-dirty', 'is-syncing', 'is-error', 'is-saved', 'is-unconfigured');
   const label = btn.querySelector('.savebtn__label');
   if (!cfg.token) {
-    // Pas configuré : propose download JSON
-    if (label) label.textContent = 'Sauvegarder';
-    btn.title = 'Télécharger une sauvegarde JSON. Pour la sync cloud auto, configurez un Gist GitHub dans Réglages.';
+    btn.classList.add('is-unconfigured');
+    if (label) label.textContent = 'Activer la sync';
+    btn.title = 'La sync cloud GitHub n\'est pas encore activée. Cliquez pour la configurer (1 minute).';
     return;
   }
-  if (dirtyState) { btn.classList.add('is-dirty'); if (label) label.textContent = 'Sauvegarder'; }
-  else if (cfg.lastSync) { btn.classList.add('is-saved'); if (label) label.textContent = 'Sauvegardé'; }
-  else { if (label) label.textContent = 'Sauvegarder'; }
+  if (dirtyState) { btn.classList.add('is-dirty'); if (label) label.textContent = 'Sauvegarder'; btn.title = 'Modifications en attente — clic pour pusher maintenant (⌘S)'; }
+  else if (cfg.lastSync) { btn.classList.add('is-saved'); if (label) label.textContent = 'Sauvegardé'; btn.title = 'Tout est sauvegardé. Dernière sync : ' + new Date(cfg.lastSync).toLocaleString('fr-FR'); }
+  else { if (label) label.textContent = 'Sauvegarder'; btn.title = 'Push vers Gist GitHub (⌘S)'; }
 }
 
 // ============= SETTINGS DIALOG =============
