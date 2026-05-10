@@ -19,7 +19,7 @@ import {
   getSyncConfig, setSyncToken, setSyncAutoSync, clearSyncConfig,
   testConnection as testSyncConnection,
   pushNow as syncPushNow, pullNow as syncPullNow,
-  setupAutoSync, schedulePush, onSyncStateChange, isSyncReady,
+  setupAutoSync, schedulePush, onSyncStateChange, isSyncReady, diagnoseSync,
 } from './sync.js';
 import {
   getAiKey, setAiKey, getAiModel, setAiModel,
@@ -324,6 +324,8 @@ function hookUI() {
     if (a === 'copy-handles') return copyHandlesOfFiltered();
     if (a === 'seed') return doReSeed();
     if (a === 'reapply-enrichment') return reapplyEnrichment();
+    if (a === 'diagnose-sync') return doDiagnoseSync();
+    if (a === 'backup-local') return doBackupLocal();
     if (a === 'settings') return openSettingsDialog();
     if (a === 'shortcuts') return openDialog('shortcuts-dialog');
     if (a === 'reset') return doReset();
@@ -1373,6 +1375,64 @@ function triggerImport() {
     }
   });
   input.click();
+}
+
+async function doDiagnoseSync() {
+  toast('Diagnostic en cours…', { type: 'info', timeout: 0 });
+  const r = await diagnoseSync();
+  // Build a readable summary
+  let html = '';
+  if (!r.configured) {
+    html = 'La sync n\'est pas configurée.';
+  } else if (r.error) {
+    html = `Erreur : ${r.error}`;
+  } else {
+    html = [
+      `Gist : ${r.gistId}`,
+      `URL : ${r.gistUrl}`,
+      `Mis à jour : ${new Date(r.gistUpdated).toLocaleString('fr-FR')}`,
+      `Fichiers totaux : ${r.totalFiles}`,
+      `Taille totale : ${Math.round(r.totalSize / 1024)} Ko`,
+      `Profils dans le manifest : ${r.manifestProfiles}`,
+      `Total images annoncé : ${r.manifestTotalImages}`,
+      `Chunks d'images sur le Gist : ${r.chunkFilesCount}`,
+      r.chunkFilesCount > 0 ? `Tailles : ${r.chunkSizes.map(c => c.sizeKb + ' Ko' + (c.truncated ? '⚠tronqué' : '')).join(', ')}` : '',
+      `Dernière sync locale : ${r.lastSync ? new Date(r.lastSync).toLocaleString('fr-FR') : 'jamais'}`,
+    ].filter(Boolean).join('\n');
+  }
+  // Trouver tous les toasts existants info et les fermer
+  document.querySelectorAll('.toast').forEach(t => { if (t.textContent.includes('Diagnostic en cours')) t.remove(); });
+  // Affichage dans une modale alert simple pour copier
+  const result = window.prompt('Diagnostic sync GitHub (Cmd+C pour copier) :', html);
+  console.log('[Diagnostic Sync]', r);
+  if (r.chunkFilesCount === 0 && r.manifestProfiles > 0) {
+    toast('⚠ AUCUN chunk d\'images sur le Gist ! Cliquez Sauvegarder pour les pusher.', { type: 'warn', timeout: 8000 });
+  } else if (r.chunkSizes?.some(c => c.truncated)) {
+    toast('⚠ Certains chunks sont tronqués côté GitHub. Re-sauvegardez.', { type: 'warn', timeout: 8000 });
+  }
+}
+
+async function doBackupLocal() {
+  const tt = toast('Préparation du backup complet…', { type: 'info', timeout: 0 });
+  try {
+    const data = await exportAll();
+    const totalImages = data.images?.length || 0;
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    a.href = url;
+    a.download = `trombinoscope-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+    tt.dismiss();
+    toast(`✓ Backup téléchargé : ${data.profiles?.length || 0} profils + ${totalImages} images (${Math.round(blob.size / 1024)} Ko).`, { type: 'ok', timeout: 6000 });
+  } catch (e) {
+    tt.dismiss();
+    toast('Backup échoué : ' + e.message, { type: 'err' });
+  }
 }
 
 async function reapplyEnrichment() {

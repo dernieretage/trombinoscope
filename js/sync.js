@@ -145,35 +145,59 @@ export async function pushNow() {
   emit({ status: 'pushing' });
   try {
     const id = await findOrCreateGist();
-    // Format chunked : profil + manifeste dans trombinoscope.json, images dans trombinoscope-images-NNN.json
     const exported = await exportAllChunked({ chunkBytes: 700_000 });
+    const fileNames = Object.keys(exported.files);
+    console.log(`[Sync] Push: ${fileNames.length} fichiers, ${Math.round(exported.totalSize / 1024)} Ko total`);
 
-    // Récupérer la liste des fichiers actuels du Gist pour supprimer les anciens chunks orphelins
+    // Récupérer la liste des fichiers actuels pour suppression chunks orphelins
     let existingChunkFiles = [];
     try {
       const current = await ghFetch(`/gists/${id}`);
       existingChunkFiles = Object.keys(current.files || {}).filter(n => /^trombinoscope-images-\d+\.json$/.test(n));
-    } catch {}
+    } catch (e) { console.warn('[Sync] Impossible de lister les chunks existants:', e.message); }
 
-    // Construire le payload PATCH : nouveaux fichiers + suppression des chunks orphelins
-    const filesPayload = {};
-    for (const [name, content] of Object.entries(exported.files)) {
-      filesPayload[name] = { content };
-    }
-    // Supprimer les chunks anciens qui n'existent plus
-    const newChunkNames = new Set(Object.keys(exported.files));
-    for (const oldName of existingChunkFiles) {
-      if (!newChunkNames.has(oldName)) {
-        filesPayload[oldName] = null; // null = suppression dans l'API Gist
-      }
-    }
-
+    // Push manifest en premier (petit et critique)
+    emit({ status: 'pushing', message: `Push manifest…` });
     await ghFetch(`/gists/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ files: filesPayload }),
+      body: JSON.stringify({ files: { 'trombinoscope.json': { content: exported.files['trombinoscope.json'] } } }),
     });
+    console.log('[Sync] Manifest pushé OK');
 
-    // Hash basé sur le contenu du manifest (profils + version)
+    // Push chaque chunk individuellement (1 PATCH par chunk = pas de payload géant)
+    const chunkNames = fileNames.filter(n => n !== 'trombinoscope.json');
+    for (let i = 0; i < chunkNames.length; i++) {
+      const name = chunkNames[i];
+      const content = exported.files[name];
+      emit({ status: 'pushing', message: `Push images ${i + 1}/${chunkNames.length} (${Math.round(content.length / 1024)} Ko)…` });
+      try {
+        await ghFetch(`/gists/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ files: { [name]: { content } } }),
+        });
+        console.log(`[Sync] ${name} pushé OK (${Math.round(content.length / 1024)} Ko)`);
+      } catch (e) {
+        console.error(`[Sync] Échec push ${name}:`, e.message);
+        throw new Error(`Échec push ${name}: ${e.message}`);
+      }
+      // throttle léger pour respecter GitHub
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    // Supprimer les chunks orphelins
+    const newChunkNames = new Set(chunkNames);
+    const toDelete = existingChunkFiles.filter(n => !newChunkNames.has(n));
+    if (toDelete.length) {
+      emit({ status: 'pushing', message: `Suppression de ${toDelete.length} chunks obsolètes…` });
+      const deletePayload = {};
+      for (const n of toDelete) deletePayload[n] = null;
+      await ghFetch(`/gists/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ files: deletePayload }),
+      });
+      console.log(`[Sync] ${toDelete.length} chunks supprimés`);
+    }
+
     const manifestStr = exported.files['trombinoscope.json'];
     const hash = await computeHash(manifestStr + ':' + exported.totalImages);
 
@@ -185,15 +209,54 @@ export async function pushNow() {
       success: true,
       profiles: JSON.parse(manifestStr).profiles?.length,
       images: exported.totalImages,
-      chunks: Object.keys(exported.files).length - 1,
+      chunks: chunkNames.length,
       gistId: id,
       sizeKb: Math.round(exported.totalSize / 1024),
     };
   } catch (e) {
+    console.error('[Sync] Push erreur:', e.message);
     emit({ status: 'error', error: e.message });
     throw e;
   } finally {
     isSyncing = false;
+  }
+}
+
+// Diagnostic : retourne l'état réel du Gist (utile pour vérifier que les images sont bien là)
+export async function diagnoseSync() {
+  const cfg = await getSyncConfig();
+  if (!cfg.token) return { configured: false };
+  try {
+    const id = await findOrCreateGist();
+    const gist = await ghFetch(`/gists/${id}`);
+    const files = Object.entries(gist.files || {}).map(([name, f]) => ({
+      name,
+      size: f.size,
+      truncated: f.truncated,
+    }));
+    const chunkFiles = files.filter(f => /^trombinoscope-images-\d+\.json$/.test(f.name));
+    const manifestFile = files.find(f => f.name === 'trombinoscope.json');
+    let manifestContent = manifestFile ? gist.files[manifestFile.name].content : null;
+    if (manifestFile?.truncated && gist.files['trombinoscope.json']?.raw_url) {
+      manifestContent = await fetch(gist.files['trombinoscope.json'].raw_url).then(r => r.text());
+    }
+    let manifest = null;
+    try { manifest = JSON.parse(manifestContent); } catch {}
+    return {
+      configured: true,
+      gistId: id,
+      gistUrl: gist.html_url,
+      gistUpdated: gist.updated_at,
+      totalFiles: files.length,
+      totalSize: files.reduce((s, f) => s + (f.size || 0), 0),
+      manifestProfiles: manifest?.profiles?.length || 0,
+      manifestTotalImages: manifest?.totalImages || manifest?.imageChunks * 10 || 0,
+      chunkFilesCount: chunkFiles.length,
+      chunkSizes: chunkFiles.map(f => ({ name: f.name, sizeKb: Math.round((f.size || 0) / 1024), truncated: f.truncated })),
+      lastSync: cfg.lastSync,
+    };
+  } catch (e) {
+    return { configured: true, error: e.message };
   }
 }
 
