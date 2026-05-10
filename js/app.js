@@ -114,11 +114,17 @@ const STATE = {
     }
   }
   // Migration: profession (string) → professions (array)
-  const needsMigration = profiles.some(p => p.profession !== undefined && !p.professions);
+  // On migre si professions est absent OU vide ET qu'on a profession à récupérer
+  // (sinon edge case : professions=[] + profession="X" → on perdait "X")
+  const needsMigration = profiles.some(p => p.profession && (!p.professions || p.professions.length === 0));
   if (needsMigration) {
     for (const p of profiles) {
-      if (p.profession !== undefined && !p.professions) {
-        p.professions = p.profession ? [p.profession] : [];
+      if (p.profession && (!p.professions || p.professions.length === 0)) {
+        p.professions = [p.profession];
+        delete p.profession;
+        await saveProfile(p);
+      } else if (p.profession !== undefined) {
+        // Cas mixte : profession + professions tous deux présents → garder professions, nettoyer
         delete p.profession;
         await saveProfile(p);
       }
@@ -184,10 +190,20 @@ const STATE = {
   // (PRIORITÉ #1 — pas de configuration nécessaire sur les nouveaux appareils)
   doCloudPullAndRefresh({ silent: false, source: 'boot' }).catch((e) => console.warn('[Boot] Cloud auto-pull skipped:', e.message));
 
+  // Helper : ne JAMAIS pull si un dialog d'édition/profile est ouvert (le pull
+  // overwrite STATE.profiles → les modifs en cours seraient perdues).
+  function canPullSafely() {
+    if (dirtyState) return false;
+    const editDlg = $('#edit-dialog');
+    const profileDlg = $('#profile-dialog');
+    if (editDlg?.open || profileDlg?.open) return false;
+    return true;
+  }
+
   // Polling toutes les 60s : si quelqu'un push depuis un autre appareil, on récupère
   setInterval(() => {
     if (document.hidden) return; // ne pas poll si tab inactive
-    if (dirtyState) return; // ne pas écraser des modifs locales en attente
+    if (!canPullSafely()) return;
     doCloudPullAndRefresh({ silent: false, source: 'poll' }).catch(() => {});
   }, 60_000);
 
@@ -195,7 +211,7 @@ const STATE = {
   // peut rester en arrière-plan plusieurs minutes sans polling).
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
-    if (dirtyState) return;
+    if (!canPullSafely()) return;
     // Throttle : pas plus d'un pull toutes les 5 secondes
     const now = Date.now();
     if (window.__lastVisibilityPull && now - window.__lastVisibilityPull < 5000) return;
@@ -205,7 +221,7 @@ const STATE = {
 
   // Pull au focus de la fenêtre (desktop : alt-tab, etc.)
   window.addEventListener('focus', () => {
-    if (dirtyState) return;
+    if (!canPullSafely()) return;
     const now = Date.now();
     if (window.__lastFocusPull && now - window.__lastFocusPull < 5000) return;
     window.__lastFocusPull = now;

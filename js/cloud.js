@@ -205,22 +205,33 @@ export async function testCloudConnection(token) {
 
 // ============= PUSH =============
 
-export async function pushCloud() {
+export async function pushCloud({ allowEmpty = false } = {}) {
   if (isSyncing) return { skipped: true };
   isSyncing = true;
   emit({ status: 'pushing', message: 'Préparation…' });
   try {
     const exported = await exportAllChunked({ chunkBytes: 700_000 });
+    const manifestObj = JSON.parse(exported.files[MANIFEST_FILE]);
+    // SAFEGUARD : ne JAMAIS push un manifest vide sans confirmation explicite.
+    // Empêche un bug local (suppression de tout, ou IDB vidée par Safari Privée)
+    // de wipe les données partagées avec d'autres devices.
+    if (!allowEmpty && (!manifestObj.profiles || manifestObj.profiles.length === 0)) {
+      isSyncing = false;
+      emit({ status: 'idle' });
+      const err = new Error('Push annulé : aucun profil local. Pour vraiment vider le cloud, utilisez pushCloud({allowEmpty:true}).');
+      err.code = 'EMPTY_BLOCKED';
+      throw err;
+    }
     const fileNames = Object.keys(exported.files);
     console.log(`[Cloud] Push: ${fileNames.length} fichiers (${Math.round(exported.totalSize / 1024)} Ko)`);
 
-    // Push manifest en premier
-    const manifestPath = `${PATH_PREFIX}/${MANIFEST_FILE}`;
-    emit({ status: 'pushing', message: `Push manifest…` });
-    await putFile(manifestPath, exported.files[MANIFEST_FILE], `Cloud sync — ${exported.totalImages} images`);
-    console.log('[Cloud] Manifest pushé OK');
-
-    // Push chaque chunk individuellement
+    // ORDRE CRITIQUE :
+    // 1. Push tous les chunks d'images d'ABORD (les autres devices verront
+    //    le manifest non-mis-à-jour mais c'est OK : les anciens chunks restent valides)
+    // 2. Cleanup chunks orphelins
+    // 3. Push manifest EN DERNIER (acte d'engagement atomique)
+    // → Si on plante au milieu des chunks, le manifest reste l'ancien valide,
+    //   pas de pull qui pointerait vers chunks manquants.
     const chunkNames = fileNames.filter(n => n !== MANIFEST_FILE);
     for (let i = 0; i < chunkNames.length; i++) {
       const name = chunkNames[i];
@@ -237,7 +248,7 @@ export async function pushCloud() {
       await new Promise(r => setTimeout(r, 250)); // throttle
     }
 
-    // Cleanup chunks orphelins
+    // Cleanup chunks orphelins (avant le manifest pour cohérence)
     const newChunkNames = new Set(chunkNames);
     const remoteChunks = await listChunkFilesOnRemote();
     const toDelete = remoteChunks.filter(n => !newChunkNames.has(n));
@@ -249,6 +260,12 @@ export async function pushCloud() {
         await new Promise(r => setTimeout(r, 200));
       }
     }
+
+    // Push manifest en DERNIER : acte d'engagement atomique
+    const manifestPath = `${PATH_PREFIX}/${MANIFEST_FILE}`;
+    emit({ status: 'pushing', message: `Push manifest…` });
+    await putFile(manifestPath, exported.files[MANIFEST_FILE], `Cloud sync — ${exported.totalImages} images`);
+    console.log('[Cloud] Manifest pushé OK (commit)');
 
     const manifestStr = exported.files[MANIFEST_FILE];
     const hash = await computeHash(manifestStr + ':' + exported.totalImages);
@@ -460,8 +477,12 @@ export async function setupCloudAutoPull() {
 
 // ============= AUTO-PUSH (debounced) =============
 
-export function scheduleCloudPush(delayMs = 4000) {
-  setMeta(META_LOCAL_DIRTY, true);
+export async function scheduleCloudPush(delayMs = 4000) {
+  // Attendre que le flag dirty soit persisté AVANT de planifier le push.
+  // Sinon, si une 2e modif arrive juste après et déclenche le push avant
+  // que le 1er setMeta soit complete, le flag dirty pourrait ne pas refléter
+  // les modifs en cours.
+  await setMeta(META_LOCAL_DIRTY, true);
   if (pushTimer) clearTimeout(pushTimer);
 
   // Repousser jusqu'au reset si le quota est épuisé
