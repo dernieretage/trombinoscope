@@ -526,15 +526,24 @@ function buildSortSelect() {
   });
 }
 
+// Memoized : invalidé si la longueur ou un updatedAt récent change.
+let _profCountCache = null, _profCountKey = null;
 function professionCounts() {
+  // Clé de cache : longueur + concat des updatedAt (cheap signature)
+  const key = STATE.profiles.length + ':' + (STATE.profiles[STATE.profiles.length - 1]?.updatedAt || '');
+  if (_profCountKey === key && _profCountCache) return _profCountCache;
   const c = {};
   for (const p of STATE.profiles) {
     for (const pro of (p.professions || [])) {
       c[pro] = (c[pro] || 0) + 1;
     }
   }
+  _profCountCache = c;
+  _profCountKey = key;
   return c;
 }
+// À appeler si on modifie un profil (force recompte)
+function invalidateProfessionCountsCache() { _profCountCache = null; _profCountKey = null; }
 
 function profileProfessions(p) {
   return p.professions || (p.profession ? [p.profession] : []);
@@ -1612,6 +1621,9 @@ function hookMultichip(id, getSuggestions) {
     _multichipState.set(id, [...cur, v]);
     renderMultichip(id);
     input.value = '';
+    // Restaurer le focus sur l'input après le rebuild (sinon UX cassée :
+    // l'user devait recliquer pour ajouter le tag suivant).
+    input.focus();
   }
 
   function removeLast() {
@@ -1619,6 +1631,7 @@ function hookMultichip(id, getSuggestions) {
     if (!cur.length) return;
     _multichipState.set(id, cur.slice(0, -1));
     renderMultichip(id);
+    input.focus();
   }
 
   wrap.addEventListener('click', (e) => {
@@ -2659,8 +2672,8 @@ function animateNumber(el, target) {
   if (!el) return;
   const cur = parseInt(el.textContent, 10);
   const from = Number.isFinite(cur) ? cur : 0;
-  if (from === target) return;
-  // Anim avec setTimeout pour fiabilité maximale
+  if (from === target) return; // pas de flicker quand rien n'a changé
+  // Anim simple depuis from vers target (pas de double-write target/from qui flickait)
   const dur = 450;
   const steps = 18;
   const stepMs = dur / steps;
@@ -2671,14 +2684,9 @@ function animateNumber(el, target) {
     const eased = 1 - Math.pow(1 - p, 3);
     el.textContent = String(Math.round(from + (target - from) * eased));
     if (p < 1) setTimeout(tick, stepMs);
+    else el.textContent = String(target); // valeur exacte finale
   };
-  // si déjà en cours, on annule pas — on laisse converger via le state final
-  el.textContent = String(target); // valeur définitive immédiate (les rendus suivants ne ré-animent pas)
-  // mais faire l'animation visuellement quand même : si on veut animer, on revert puis tick
-  if (Math.abs(target - from) > 0) {
-    el.textContent = String(from);
-    setTimeout(tick, stepMs);
-  }
+  setTimeout(tick, stepMs);
 }
 
 function resetFilters() {

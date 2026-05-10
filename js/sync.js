@@ -65,19 +65,26 @@ export async function generateInviteLink() {
  * automatiquement la sync et pull immédiatement les données du Gist.
  * @returns null si pas de paramètre, sinon { activated: true, pulled: {...} }
  */
+const SYNC_INVITE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
 export async function consumeActivateParam() {
   try {
     const url = new URL(window.location.href);
     const activate = url.searchParams.get('activate');
     if (!activate) return null;
+    // Nettoyer l'URL D'ABORD (sécurité)
+    url.searchParams.delete('activate');
+    history.replaceState(null, '', url.toString());
+
     const payload = JSON.parse(atob(activate));
     if (!payload.t) return null;
+    if (payload.ts && Date.now() - payload.ts > SYNC_INVITE_TTL_MS) {
+      const ageH = Math.round((Date.now() - payload.ts) / 3600000);
+      return { activated: false, error: `Lien expiré (${ageH}h).` };
+    }
     await setMeta(META_TOKEN, payload.t);
     if (payload.g) await setMeta(META_GIST_ID, payload.g);
     await setMeta(META_AUTOSYNC, true);
-    // Nettoyer l'URL pour ne pas garder le PAT en historique
-    url.searchParams.delete('activate');
-    history.replaceState(null, '', url.toString());
     isReady = true;
     // Pull immédiat
     const pulled = await pullNow({ replace: true });
@@ -327,7 +334,8 @@ export async function diagnoseSync() {
     const manifestFile = files.find(f => f.name === 'trombinoscope.json');
     let manifestContent = manifestFile ? gist.files[manifestFile.name].content : null;
     if (manifestFile?.truncated && gist.files['trombinoscope.json']?.raw_url) {
-      manifestContent = await fetch(gist.files['trombinoscope.json'].raw_url).then(r => r.text());
+      const rRaw = await fetch(gist.files['trombinoscope.json'].raw_url);
+      if (rRaw.ok) manifestContent = await rRaw.text();
     }
     let manifest = null;
     try { manifest = JSON.parse(manifestContent); } catch {}
@@ -372,7 +380,12 @@ export async function pullNow({ replace = true } = {}) {
       let content = f.content;
       if (f.truncated && f.raw_url) {
         emit({ status: 'pulling', message: `Téléchargement ${i + 1}/${allNames.length}…` });
-        content = await fetch(f.raw_url).then(r => r.text());
+        const rRaw = await fetch(f.raw_url);
+        if (!rRaw.ok) {
+          console.warn(`[Sync] raw_url ${name} → ${rRaw.status}`);
+          continue;
+        }
+        content = await rRaw.text();
       }
       filesByName[name] = content;
     }
@@ -431,7 +444,8 @@ export async function setupAutoSync() {
       if (file && file.size > 100) {
         let remoteContent = file.content;
         if (file.truncated && file.raw_url) {
-          remoteContent = await fetch(file.raw_url).then(r => r.text());
+          const rRaw = await fetch(file.raw_url);
+          if (rRaw.ok) remoteContent = await rRaw.text();
         }
         let remoteData;
         try { remoteData = JSON.parse(remoteContent); } catch { remoteData = null; }
