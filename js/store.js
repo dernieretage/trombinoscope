@@ -186,6 +186,7 @@ export async function setMeta(key, value) {
 
 // ============= EXPORT / IMPORT JSON =============
 
+// Export "single file" (legacy) — utilisé pour download local et backward compat
 export async function exportAll() {
   const profiles = await getAllProfiles();
   const out = {
@@ -194,7 +195,6 @@ export async function exportAll() {
     profiles,
     images: [],
   };
-  // exporter les images en base64
   for (const p of profiles) {
     const imgs = await getProfileImages(p.id);
     for (const img of imgs) {
@@ -203,6 +203,68 @@ export async function exportAll() {
     }
   }
   return out;
+}
+
+/**
+ * Export "chunked" pour Gist GitHub :
+ * - Fichier `trombinoscope.json` = metadata + profils (sans images)
+ * - Fichiers `trombinoscope-images-NN.json` = chunks d'images en base64 (~600 KB chacun)
+ * Cela permet de dépasser la limite recommandée Gist (~1 MB par fichier).
+ */
+export async function exportAllChunked({ chunkBytes = 600_000 } = {}) {
+  const profiles = await getAllProfiles();
+  const result = {
+    files: {},
+    totalImages: 0,
+    totalSize: 0,
+  };
+
+  // Collecte de toutes les images en base64
+  const allImages = [];
+  for (const p of profiles) {
+    const imgs = await getProfileImages(p.id);
+    for (const img of imgs) {
+      const b64 = await blobToBase64(img.blob);
+      allImages.push({ key: img.key, profileId: img.profileId, index: img.index, type: img.type, data: b64 });
+    }
+  }
+  result.totalImages = allImages.length;
+
+  // Découpe en chunks
+  const chunks = [];
+  let current = [];
+  let currentSize = 0;
+  for (const img of allImages) {
+    const sz = img.data.length;
+    if (currentSize + sz > chunkBytes && current.length > 0) {
+      chunks.push(current);
+      current = [];
+      currentSize = 0;
+    }
+    current.push(img);
+    currentSize += sz;
+  }
+  if (current.length) chunks.push(current);
+
+  // Manifest principal (metadata + profils, pas d'images)
+  const manifest = {
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    profiles,
+    imageChunks: chunks.length,
+    totalImages: allImages.length,
+  };
+  result.files['trombinoscope.json'] = JSON.stringify(manifest);
+  result.totalSize += result.files['trombinoscope.json'].length;
+
+  // Fichiers de chunks
+  chunks.forEach((chunk, i) => {
+    const fname = `trombinoscope-images-${String(i + 1).padStart(3, '0')}.json`;
+    result.files[fname] = JSON.stringify({ chunk: i + 1, of: chunks.length, images: chunk });
+    result.totalSize += result.files[fname].length;
+  });
+
+  return result;
 }
 
 export async function importAll(data, { replace = false } = {}) {
@@ -223,6 +285,67 @@ export async function importAll(data, { replace = false } = {}) {
       store.put({ key: img.key, profileId: img.profileId, index: img.index, blob, type: img.type, size: blob.size, addedAt: Date.now() });
     }
   }
+}
+
+/**
+ * Import "chunked" : prend un objet { 'trombinoscope.json': string, 'trombinoscope-images-NNN.json': string, ... }
+ * et restaure tout. Compatible avec l'ancien format si un seul fichier "trombinoscope.json" est fourni.
+ */
+export async function importAllChunked(filesByName, { replace = true } = {}) {
+  const manifestStr = filesByName['trombinoscope.json'];
+  if (!manifestStr) throw new Error('trombinoscope.json manquant');
+  const manifest = JSON.parse(manifestStr);
+  let totalProfiles = 0, totalImages = 0;
+
+  if (replace) {
+    const db = await openDB();
+    const t = db.transaction([STORE_PROFILES, STORE_IMAGES], 'readwrite');
+    t.objectStore(STORE_PROFILES).clear();
+    t.objectStore(STORE_IMAGES).clear();
+    await new Promise((r) => (t.oncomplete = r));
+  }
+
+  if (manifest.profiles?.length) {
+    await bulkSaveProfiles(manifest.profiles);
+    totalProfiles = manifest.profiles.length;
+  }
+
+  // Helper qui save une liste d'images (toutes les conversions blob FAITES avant la tx)
+  async function saveImageBatch(rawImgs) {
+    if (!rawImgs.length) return 0;
+    // Convertir TOUS les blobs en parallèle AVANT d'ouvrir la transaction
+    const records = await Promise.all(rawImgs.map(async (img) => {
+      const blob = await base64ToBlob(img.data, img.type);
+      return { key: img.key, profileId: img.profileId, index: img.index, blob, type: img.type, size: blob.size, addedAt: Date.now() };
+    }));
+    // Maintenant tout est synchrone : on ouvre une seule transaction
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const t = db.transaction(STORE_IMAGES, 'readwrite');
+      const store = t.objectStore(STORE_IMAGES);
+      for (const rec of records) store.put(rec);
+      t.oncomplete = () => resolve(records.length);
+      t.onerror = () => reject(t.error);
+    });
+  }
+
+  // Format legacy : images dans le manifest
+  if (manifest.images?.length) {
+    totalImages += await saveImageBatch(manifest.images);
+  }
+
+  // Format chunked : lire tous les fichiers trombinoscope-images-*.json
+  const chunkFiles = Object.keys(filesByName).filter(n => /^trombinoscope-images-\d+\.json$/.test(n)).sort();
+  for (const fname of chunkFiles) {
+    try {
+      const chunk = JSON.parse(filesByName[fname]);
+      if (chunk.images?.length) {
+        totalImages += await saveImageBatch(chunk.images);
+      }
+    } catch (e) { console.warn(`Chunk ${fname} invalide:`, e.message); }
+  }
+
+  return { profiles: totalProfiles, images: totalImages };
 }
 
 // ============= UTILS =============

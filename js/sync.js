@@ -3,7 +3,7 @@
 // L'app crée un gist privé "trombinoscope-data" et y stocke un dump JSON.
 // Sync auto au démarrage (pull) et après chaque modif (push, debouncé).
 
-import { exportAll, importAll, getMeta, setMeta, getAllProfiles } from './store.js';
+import { exportAll, exportAllChunked, importAll, importAllChunked, getMeta, setMeta, getAllProfiles } from './store.js';
 
 const GIST_DESCRIPTION = 'Trombinoscope — données privées (sync cross-device)';
 const GIST_FILENAME = 'trombinoscope.json';
@@ -85,12 +85,18 @@ async function findOrCreateGist() {
       } else { throw e; }
     }
   }
-  // Chercher un gist existant
-  const gists = await ghFetch('/gists?per_page=100');
-  const found = gists.find(g => g.description === GIST_DESCRIPTION || (g.files && g.files[GIST_FILENAME]));
-  if (found) {
-    await setMeta(META_GIST_ID, found.id);
-    return found.id;
+  // Chercher un gist existant (limite à 100 par page, on peut paginer si besoin)
+  let foundId = null;
+  for (let page = 1; page <= 5 && !foundId; page++) {
+    const gists = await ghFetch(`/gists?per_page=100&page=${page}`);
+    if (!gists.length) break;
+    const found = gists.find(g => g.description === GIST_DESCRIPTION || (g.files && g.files[GIST_FILENAME]));
+    if (found) foundId = found.id;
+    if (gists.length < 100) break;
+  }
+  if (foundId) {
+    await setMeta(META_GIST_ID, foundId);
+    return foundId;
   }
   // Créer
   const created = await ghFetch('/gists', {
@@ -98,7 +104,7 @@ async function findOrCreateGist() {
     body: JSON.stringify({
       description: GIST_DESCRIPTION,
       public: false,
-      files: { [GIST_FILENAME]: { content: JSON.stringify({ profiles: [], images: [], version: 2, exportedAt: new Date().toISOString() }) } },
+      files: { [GIST_FILENAME]: { content: JSON.stringify({ profiles: [], imageChunks: 0, version: 2, exportedAt: new Date().toISOString() }) } },
     }),
   });
   await setMeta(META_GIST_ID, created.id);
@@ -139,18 +145,50 @@ export async function pushNow() {
   emit({ status: 'pushing' });
   try {
     const id = await findOrCreateGist();
-    const data = await exportAll();
-    const content = JSON.stringify(data);
-    const hash = await computeHash(content);
+    // Format chunked : profil + manifeste dans trombinoscope.json, images dans trombinoscope-images-NNN.json
+    const exported = await exportAllChunked({ chunkBytes: 700_000 });
+
+    // Récupérer la liste des fichiers actuels du Gist pour supprimer les anciens chunks orphelins
+    let existingChunkFiles = [];
+    try {
+      const current = await ghFetch(`/gists/${id}`);
+      existingChunkFiles = Object.keys(current.files || {}).filter(n => /^trombinoscope-images-\d+\.json$/.test(n));
+    } catch {}
+
+    // Construire le payload PATCH : nouveaux fichiers + suppression des chunks orphelins
+    const filesPayload = {};
+    for (const [name, content] of Object.entries(exported.files)) {
+      filesPayload[name] = { content };
+    }
+    // Supprimer les chunks anciens qui n'existent plus
+    const newChunkNames = new Set(Object.keys(exported.files));
+    for (const oldName of existingChunkFiles) {
+      if (!newChunkNames.has(oldName)) {
+        filesPayload[oldName] = null; // null = suppression dans l'API Gist
+      }
+    }
+
     await ghFetch(`/gists/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ files: { [GIST_FILENAME]: { content } } }),
+      body: JSON.stringify({ files: filesPayload }),
     });
+
+    // Hash basé sur le contenu du manifest (profils + version)
+    const manifestStr = exported.files['trombinoscope.json'];
+    const hash = await computeHash(manifestStr + ':' + exported.totalImages);
+
     await setMeta(META_LAST_SYNC, new Date().toISOString());
     await setMeta(META_LAST_REMOTE_HASH, hash);
     await setMeta(META_LOCAL_DIRTY, false);
     emit({ status: 'idle', lastSync: new Date().toISOString() });
-    return { success: true, profiles: data.profiles?.length, gistId: id, sizeKb: Math.round(content.length / 1024) };
+    return {
+      success: true,
+      profiles: JSON.parse(manifestStr).profiles?.length,
+      images: exported.totalImages,
+      chunks: Object.keys(exported.files).length - 1,
+      gistId: id,
+      sizeKb: Math.round(exported.totalSize / 1024),
+    };
   } catch (e) {
     emit({ status: 'error', error: e.message });
     throw e;
@@ -162,30 +200,50 @@ export async function pushNow() {
 export async function pullNow({ replace = true } = {}) {
   if (isSyncing) return { skipped: true };
   isSyncing = true;
-  emit({ status: 'pulling' });
+  emit({ status: 'pulling', message: 'Connexion à GitHub…' });
   try {
     const id = await findOrCreateGist();
     const gist = await ghFetch(`/gists/${id}`);
-    const file = gist.files?.[GIST_FILENAME];
-    if (!file) {
+    const allFiles = gist.files || {};
+    const manifestFile = allFiles[GIST_FILENAME];
+    if (!manifestFile) {
       emit({ status: 'idle' });
       return { success: true, empty: true };
     }
-    let content = file.content;
-    if (file.truncated && file.raw_url) {
-      content = await fetch(file.raw_url).then(r => r.text());
+
+    // Lire le contenu de tous les fichiers (manifest + chunks)
+    const filesByName = {};
+    const allNames = Object.keys(allFiles);
+    for (let i = 0; i < allNames.length; i++) {
+      const name = allNames[i];
+      const f = allFiles[name];
+      let content = f.content;
+      if (f.truncated && f.raw_url) {
+        emit({ status: 'pulling', message: `Téléchargement ${i + 1}/${allNames.length}…` });
+        content = await fetch(f.raw_url).then(r => r.text());
+      }
+      filesByName[name] = content;
     }
-    const data = JSON.parse(content);
-    if (!data.profiles?.length && !data.images?.length) {
+
+    // Vérifier qu'on a au moins un profil
+    let manifest;
+    try { manifest = JSON.parse(filesByName[GIST_FILENAME]); } catch { manifest = null; }
+    if (!manifest?.profiles?.length && !manifest?.images?.length) {
       emit({ status: 'idle' });
       return { success: true, empty: true };
     }
-    await importAll(data, { replace });
-    const hash = await computeHash(content);
+
+    emit({ status: 'pulling', message: `Restauration ${manifest.profiles?.length || 0} profils + images…` });
+    const result = await importAllChunked(filesByName, { replace });
+
+    // Hash basé sur le manifest + total images (cohérent avec push)
+    const totalImages = result.images || 0;
+    const hash = await computeHash(filesByName[GIST_FILENAME] + ':' + totalImages);
+
     await setMeta(META_LAST_SYNC, new Date().toISOString());
     await setMeta(META_LAST_REMOTE_HASH, hash);
     emit({ status: 'idle', lastSync: new Date().toISOString() });
-    return { success: true, profiles: data.profiles?.length };
+    return { success: true, profiles: result.profiles, images: result.images };
   } catch (e) {
     emit({ status: 'error', error: e.message });
     throw e;
@@ -217,7 +275,7 @@ export async function setupAutoSync() {
       const file = gist.files?.[GIST_FILENAME];
       const localDirty = await getMeta(META_LOCAL_DIRTY);
 
-      // Récupérer le contenu remote pour décider
+      // Récupérer le contenu remote du manifest
       if (file && file.size > 100) {
         let remoteContent = file.content;
         if (file.truncated && file.raw_url) {
@@ -226,26 +284,25 @@ export async function setupAutoSync() {
         let remoteData;
         try { remoteData = JSON.parse(remoteContent); } catch { remoteData = null; }
 
-        // Si data distante non vide, vérifier si on doit pull
         if (remoteData?.profiles?.length) {
-          const remoteHash = await computeHash(remoteContent);
+          // Compter le nombre total d'images dans tous les chunks
+          let totalImages = remoteData.totalImages || (remoteData.images?.length || 0);
+          const chunkFiles = Object.keys(gist.files || {}).filter(n => /^trombinoscope-images-\d+\.json$/.test(n));
+          if (chunkFiles.length && !remoteData.totalImages) {
+            // Approximation rapide sans télécharger les chunks
+            totalImages = chunkFiles.length * 10; // ordre de grandeur
+          }
+          const remoteHash = await computeHash(remoteContent + ':' + totalImages);
           const lastRemoteHash = await getMeta(META_LAST_REMOTE_HASH);
-
-          // Cas où on doit pull silencieusement :
-          // 1. Pas de last sync (premier démarrage avec sync activée)
-          // 2. Hash distant différent du dernier hash connu (modif sur autre device)
-          // 3. local pas dirty (l'user n'a rien modifié depuis le dernier pull)
           const needsPull = !lastSync || (remoteHash !== lastRemoteHash);
 
           if (needsPull) {
             if (!localDirty) {
-              // Pull silencieux — local n'a pas été modifié
-              emit({ status: 'pulling', message: 'Récupération des données distantes…' });
+              emit({ status: 'pulling', message: `Récupération de ${remoteData.profiles.length} profils + ${totalImages} images…` });
               await pullNow({ replace: true });
               await setMeta(META_LOCAL_DIRTY, false);
-              emit({ status: 'pulled-silent', profiles: remoteData.profiles.length });
+              emit({ status: 'pulled-silent', profiles: remoteData.profiles.length, images: totalImages });
             } else {
-              // Conflit : local et remote ont changé
               emit({ status: 'remote-newer', remoteUpdated, gistId: id, remoteProfiles: remoteData.profiles.length });
             }
           }

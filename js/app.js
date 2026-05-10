@@ -1563,7 +1563,8 @@ function setupSyncListeners() {
       buildProfessionDatalist();
       render();
       window.__updateIgBulkCount?.();
-      toast(`✓ Données synchronisées : ${s.profiles} profils chargés depuis le cloud.`, { type: 'ok', timeout: 4000 });
+      const imgMsg = s.images ? ` + ${s.images} images` : '';
+      toast(`✓ Synchro cloud : ${s.profiles} profils${imgMsg} chargés.`, { type: 'ok', timeout: 5000 });
     }
     if (s.status === 'remote-newer') {
       toast(`Conflit : ${s.remoteProfiles} profils distants vs vos modifs locales. Que faire ?`, {
@@ -1680,7 +1681,8 @@ function hookSettingsDialog() {
       // Push immédiat pour pousser TOUT vers le Gist (état actuel = source de vérité initiale)
       try {
         const r = await syncPushNow();
-        out.textContent = `✓ @${u.login} — ${r.profiles} profils sauvegardés (${r.sizeKb} Ko). Sync auto activée.`;
+        const imgMsg = r.images ? ` + ${r.images} images (${r.chunks} fichiers)` : '';
+        out.textContent = `✓ @${u.login} — ${r.profiles} profils${imgMsg} sauvegardés (${r.sizeKb} Ko). Sync auto activée.`;
       } catch (pushErr) {
         out.textContent = `✓ @${u.login} connecté — mais push initial échoué : ${pushErr.message}`;
       }
