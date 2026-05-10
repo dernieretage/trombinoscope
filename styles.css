@@ -784,13 +784,25 @@ body.is-ready .boot { opacity: 0; visibility: hidden; pointer-events: none; }
   min-height: 0;
 }
 .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
-  padding: 2px 8px;
+  line-height: 1;
+  padding: 4px 9px;
   border-radius: var(--r-pill);
   background: var(--bg-elev-2);
   color: var(--text-muted);
   border: 1px solid var(--line);
   transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.tag svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  display: inline-block;
 }
 .tag[data-tag] { cursor: pointer; }
 .tag[data-tag]:hover {
@@ -1337,10 +1349,16 @@ dialog[open] .dialog__inner {
   font-family: var(--f-display); font-size: 28px; font-weight: 500; letter-spacing: -.01em;
 }
 .profile__sub {
-  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
   color: var(--text-muted); font-size: 13px;
 }
-.profile__sub .tag { background: var(--bg); }
+.profile__sub .tag {
+  background: var(--bg);
+  font-size: 12px;
+  padding: 5px 11px;
+  gap: 6px;
+}
+.profile__sub .tag svg { width: 13px; height: 13px; }
 .profile__close, .profile__edit {
   position: absolute; top: 14px;
 }
