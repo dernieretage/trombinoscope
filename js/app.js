@@ -1022,6 +1022,15 @@ async function confirmDelete(profile) {
   await deleteProfile(profile.id);
   STATE.profiles = STATE.profiles.filter(p => p.id !== profile.id);
   STATE.imagesByProfile.delete(profile.id);
+  // Si le profil supprimé était ouvert dans la modal, fermer + reset STATE.current
+  // pour éviter des actions sur un fantôme (save → recrée le profil supprimé !).
+  if (STATE.current?.id === profile.id) {
+    STATE.current = null;
+    const dlg = $('#profile-dialog');
+    if (dlg?.open) dlg.close();
+    const editDlg = $('#edit-dialog');
+    if (editDlg?.open) editDlg.close();
+  }
   buildFilterChips();
   render();
   maybeSchedulePush();
@@ -1950,8 +1959,12 @@ function openDialog(id) {
 
 // ============= SYNC =============
 
+let __unsubSyncListener = null;
 function setupSyncListeners() {
-  onSyncStateChange(async (s) => {
+  // Idempotent : si déjà setup, on retire l'ancien listener pour éviter les
+  // doubles notifications (peut arriver lors de hot-reload ou boot multiple).
+  if (__unsubSyncListener) { try { __unsubSyncListener(); } catch {} }
+  __unsubSyncListener = onSyncStateChange(async (s) => {
     updateSyncPill(s);
     const btn = $('#save-btn');
     if (btn) {
@@ -2072,8 +2085,10 @@ function maybeSchedulePush() {
   });
 }
 
+let __unsubCloudListener = null;
 function setupCloudListeners() {
-  onCloudStateChange(async (s) => {
+  if (__unsubCloudListener) { try { __unsubCloudListener(); } catch {} }
+  __unsubCloudListener = onCloudStateChange(async (s) => {
     const btn = $('#save-btn');
     if (!btn) return;
     btn.classList.remove('is-dirty', 'is-syncing', 'is-error', 'is-saved', 'is-unconfigured');

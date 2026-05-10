@@ -25,13 +25,32 @@ function cleanHandle(h) {
   return String(h || '').replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[\/?#].*$/, '').trim().toLowerCase();
 }
 
+// Wrapper fetch avec timeout via AbortController : sans ça, un proxy
+// silencieux peut faire hang infiniment l'import IG.
+async function fetchWithTimeout(url, opts = {}, timeoutMs = 15000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } catch (e) {
+    if (e?.name === 'AbortError') {
+      const err = new Error(`Timeout ${timeoutMs}ms : ${url.slice(0, 50)}…`);
+      err.code = 'TIMEOUT';
+      throw err;
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function jinaGet(url, opts = {}) {
-  const r = await fetch(JINA_BASE + url, {
+  const r = await fetchWithTimeout(JINA_BASE + url, {
     headers: {
       'X-Return-Format': opts.format || 'markdown',
       ...(opts.noCache ? { 'X-No-Cache': 'true' } : {}),
     },
-  });
+  }, 15000);
   if (!r.ok) throw new Error(`Jina ${r.status}`);
   return r.text();
 }
@@ -42,7 +61,7 @@ async function microlinkGet(url) {
   const base = apiKey ? MICROLINK_PRO_BASE : MICROLINK_BASE;
   const headers = { 'Accept': 'application/json' };
   if (apiKey) headers['x-api-key'] = apiKey;
-  const r = await fetch(base + encodeURIComponent(url), { headers });
+  const r = await fetchWithTimeout(base + encodeURIComponent(url), { headers }, 15000);
   if (r.status === 429) {
     _microlinkRateLimited = true;
     throw new Error('MICROLINK_RATE_LIMITED');
@@ -149,10 +168,14 @@ export async function fetchPostImage(postUrl) {
 
 export async function fetchImageAsBlob(url) {
   // Les URLs CDN Instagram acceptent le fetch direct (CORS OK testé)
-  const r = await fetch(url, { mode: 'cors', referrerPolicy: 'no-referrer' });
+  const r = await fetchWithTimeout(url, { mode: 'cors', referrerPolicy: 'no-referrer' }, 12000);
   if (!r.ok) throw new Error(`Image fetch ${r.status}`);
   const blob = await r.blob();
   if (!blob || blob.size < 100) throw new Error('Image vide');
+  // Vérifier que c'est bien une image (un proxy peut retourner du HTML d'erreur en 200)
+  if (blob.type && !blob.type.startsWith('image/')) {
+    throw new Error(`Pas une image (type: ${blob.type})`);
+  }
   return blob;
 }
 
