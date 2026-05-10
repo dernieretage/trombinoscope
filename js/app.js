@@ -843,6 +843,16 @@ function applyFilters() {
 }
 
 function render() {
+  try { return _renderImpl(); }
+  catch (e) {
+    console.error('[render] crash:', e);
+    try {
+      toast('Erreur d\'affichage : ' + (e?.message || 'inconnue') + '. Rechargez la page.', { type: 'err', timeout: 6000 });
+    } catch {}
+  }
+}
+
+function _renderImpl() {
   const list = applyFilters();
   const grid = $('#grid');
   const empty = $('#empty');
@@ -1386,13 +1396,25 @@ if (typeof window !== 'undefined') {
 async function addImagesToProfile(profile, files) {
   const existing = await getProfileImages(profile.id);
   let nextIdx = existing.length;
+  let quotaHit = false;
+  let saved = 0;
   for (const f of files) {
     try {
       const blob = await downscaleImage(f, { maxDim: 1400, quality: 0.85 });
       await saveImage(profile.id, nextIdx++, blob);
+      saved++;
     } catch (err) {
       console.warn('Erreur image', err);
+      if (err?.code === 'QUOTA_LOCAL') {
+        quotaHit = true;
+        break; // inutile de continuer
+      }
     }
+  }
+  if (quotaHit) {
+    toast(`Stockage local plein. ${saved}/${files.length} images sauvegardées. Supprimez d'anciennes images puis réessayez.`, {
+      type: 'err', timeout: 7000,
+    });
   }
 }
 
@@ -1809,7 +1831,13 @@ function onKeydown(e) {
   if (e.key === 'Escape') {
     closeMenu();
     closeContextMenu();
-    return; // dialog gère son close
+    // Fermer le premier dialog ouvert (le natif Esc est parfois capricieux selon
+    // l'élément qui a le focus, ex. un <textarea> à l'intérieur du dialog)
+    const openDlg = document.querySelector('dialog[open]');
+    if (openDlg) {
+      try { openDlg.close(); } catch {}
+    }
+    return;
   }
   if (profileOpen && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
     e.preventDefault();

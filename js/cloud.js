@@ -29,6 +29,7 @@ let pushTimer = null;
 let cloudQuotaResetAt = 0;
 export function isCloudQuotaExhausted() { return Date.now() < cloudQuotaResetAt; }
 export function getCloudQuotaWaitSec() { return Math.max(0, Math.ceil((cloudQuotaResetAt - Date.now()) / 1000)); }
+export function isCloudSyncBusy() { return isSyncing; }
 
 export function onCloudStateChange(cb) { listeners.add(cb); return () => listeners.delete(cb); }
 function emit(state) { for (const cb of listeners) try { cb(state); } catch {} }
@@ -299,78 +300,93 @@ async function fetchFileViaApi(path) {
  * Utilisable depuis n'importe quel appareil.
  */
 export async function pullCloud({ replace = true } = {}) {
+  if (isSyncing) return { skipped: true, reason: 'sync busy' };
+  isSyncing = true;
   emit({ status: 'pulling', message: 'Connexion au cloud…' });
 
-  // 1. Fetch le manifest via API GitHub (toujours frais), fallback raw
-  let manifest;
   try {
-    let manifestStr = await fetchFileViaApi(`${PATH_PREFIX}/${MANIFEST_FILE}`);
-    if (!manifestStr) {
-      // fallback raw avec cache busting
-      const res = await fetch(rawUrl(MANIFEST_FILE), { cache: 'no-store' });
-      if (!res.ok) {
-        emit({ status: 'idle' });
-        return { success: false, empty: true, reason: `manifest ${res.status}` };
-      }
-      manifestStr = await res.text();
-    }
-    manifest = JSON.parse(manifestStr);
-  } catch (e) {
-    emit({ status: 'error', error: 'Lecture manifest échouée: ' + e.message });
-    return { success: false, error: e.message };
-  }
-
-  if (!manifest?.profiles?.length) {
-    emit({ status: 'idle' });
-    return { success: true, empty: true };
-  }
-
-  const filesByName = { [MANIFEST_FILE]: JSON.stringify(manifest) };
-  const expectedChunks = manifest.imageChunks || 0;
-  let downloadedChunks = 0;
-
-  // 2. Fetch tous les chunks d'images en parallèle (par groupes de 4)
-  if (expectedChunks > 0) {
-    emit({ status: 'pulling', message: `Téléchargement ${expectedChunks} fichiers d'images…` });
-    const chunkNames = Array.from({ length: expectedChunks }, (_, i) =>
-      `trombinoscope-images-${String(i + 1).padStart(3, '0')}.json`
-    );
-    const concurrency = 4;
-    for (let i = 0; i < chunkNames.length; i += concurrency) {
-      const batch = chunkNames.slice(i, i + concurrency);
-      await Promise.all(batch.map(async (name) => {
-        try {
-          const res = await fetch(rawUrl(name), { cache: 'no-store' });
-          if (res.ok) {
-            filesByName[name] = await res.text();
-            downloadedChunks++;
-            emit({ status: 'pulling', message: `Téléchargement ${downloadedChunks}/${expectedChunks}…` });
-          } else {
-            console.warn(`[Cloud] ${name} → ${res.status}`);
-          }
-        } catch (e) {
-          console.warn(`[Cloud] ${name} échoué:`, e.message);
+    // 1. Fetch le manifest via API GitHub (toujours frais), fallback raw
+    let manifest;
+    try {
+      let manifestStr = await fetchFileViaApi(`${PATH_PREFIX}/${MANIFEST_FILE}`);
+      if (!manifestStr) {
+        const res = await fetch(rawUrl(MANIFEST_FILE), { cache: 'no-store' });
+        if (!res.ok) {
+          emit({ status: 'idle' });
+          return { success: false, empty: true, reason: `manifest ${res.status}` };
         }
-      }));
+        manifestStr = await res.text();
+      }
+      manifest = JSON.parse(manifestStr);
+    } catch (e) {
+      emit({ status: 'error', error: 'Lecture manifest échouée: ' + e.message });
+      return { success: false, error: e.message };
     }
+
+    if (!manifest?.profiles?.length) {
+      emit({ status: 'idle' });
+      return { success: true, empty: true };
+    }
+
+    const filesByName = { [MANIFEST_FILE]: JSON.stringify(manifest) };
+    const expectedChunks = manifest.imageChunks || 0;
+    let downloadedChunks = 0;
+    let failedChunks = 0;
+
+    // 2. Fetch tous les chunks d'images en parallèle (par groupes de 4)
+    if (expectedChunks > 0) {
+      emit({ status: 'pulling', message: `Téléchargement ${expectedChunks} fichiers d'images…` });
+      const chunkNames = Array.from({ length: expectedChunks }, (_, i) =>
+        `trombinoscope-images-${String(i + 1).padStart(3, '0')}.json`
+      );
+      const concurrency = 4;
+      for (let i = 0; i < chunkNames.length; i += concurrency) {
+        const batch = chunkNames.slice(i, i + concurrency);
+        await Promise.all(batch.map(async (name) => {
+          try {
+            const res = await fetch(rawUrl(name), { cache: 'no-store' });
+            if (res.ok) {
+              filesByName[name] = await res.text();
+              downloadedChunks++;
+              emit({ status: 'pulling', message: `Téléchargement ${downloadedChunks}/${expectedChunks}…` });
+            } else {
+              failedChunks++;
+              console.warn(`[Cloud] ${name} → ${res.status}`);
+            }
+          } catch (e) {
+            failedChunks++;
+            console.warn(`[Cloud] ${name} échoué:`, e.message);
+          }
+        }));
+      }
+    }
+
+    // 3. Restaurer en local
+    emit({ status: 'pulling', message: `Restauration locale…` });
+    let result;
+    try {
+      result = await importAllChunked(filesByName, { replace });
+    } catch (e) {
+      emit({ status: 'error', error: 'Restauration locale échouée: ' + e.message });
+      return { success: false, error: e.message };
+    }
+
+    const hash = await computeHash(filesByName[MANIFEST_FILE] + ':' + (result.images || 0));
+    await setMeta(META_LAST_SYNC, new Date().toISOString());
+    await setMeta(META_LAST_HASH, hash);
+    emit({ status: 'idle', lastSync: new Date().toISOString() });
+
+    return {
+      success: true,
+      profiles: result.profiles,
+      images: result.images,
+      expectedChunks,
+      downloadedChunks,
+      failedChunks,
+    };
+  } finally {
+    isSyncing = false;
   }
-
-  // 3. Restaurer en local
-  emit({ status: 'pulling', message: `Restauration locale…` });
-  const result = await importAllChunked(filesByName, { replace });
-
-  const hash = await computeHash(filesByName[MANIFEST_FILE] + ':' + (result.images || 0));
-  await setMeta(META_LAST_SYNC, new Date().toISOString());
-  await setMeta(META_LAST_HASH, hash);
-  emit({ status: 'idle', lastSync: new Date().toISOString() });
-
-  return {
-    success: true,
-    profiles: result.profiles,
-    images: result.images,
-    expectedChunks,
-    downloadedChunks,
-  };
 }
 
 // ============= AUTO-PULL AU DÉMARRAGE =============
@@ -443,6 +459,12 @@ export function scheduleCloudPush(delayMs = 4000) {
 
   pushTimer = setTimeout(async () => {
     pushTimer = null;
+    // Si un pull est en cours, attendre + replanifier (évite l'écrasement remote)
+    if (isSyncing) {
+      console.log('[Cloud] Push différé : pull en cours.');
+      pushTimer = setTimeout(() => scheduleCloudPush(0), 1500);
+      return;
+    }
     try {
       const cfg = await getCloudConfig();
       if (cfg.token && cfg.auto) await pushCloud();

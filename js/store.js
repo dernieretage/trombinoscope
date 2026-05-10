@@ -109,7 +109,16 @@ export async function bulkSaveProfiles(profiles) {
 export async function saveImage(profileId, index, blob) {
   const key = `${profileId}::${index}`;
   const store = await tx(STORE_IMAGES, 'readwrite');
-  await reqToPromise(store.put({ key, profileId, index, blob, type: blob.type, size: blob.size, addedAt: Date.now() }));
+  try {
+    await reqToPromise(store.put({ key, profileId, index, blob, type: blob.type, size: blob.size, addedAt: Date.now() }));
+  } catch (e) {
+    if (e?.name === 'QuotaExceededError') {
+      const err = new Error('Stockage local plein — supprimez quelques images anciennes ou fichiers volumineux.');
+      err.code = 'QUOTA_LOCAL';
+      throw err;
+    }
+    throw e;
+  }
   // Invalider le cache d'objectURL pour cette clé (utile en cas de remplacement)
   try {
     const u = await import('./utils.js');
@@ -302,7 +311,11 @@ export async function importAllChunked(filesByName, { replace = true } = {}) {
     const t = db.transaction([STORE_PROFILES, STORE_IMAGES], 'readwrite');
     t.objectStore(STORE_PROFILES).clear();
     t.objectStore(STORE_IMAGES).clear();
-    await new Promise((r) => (t.oncomplete = r));
+    await new Promise((resolve, reject) => {
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+      t.onabort = () => reject(new Error('Transaction abortée pendant le clear'));
+    });
   }
 
   if (manifest.profiles?.length) {
@@ -321,11 +334,20 @@ export async function importAllChunked(filesByName, { replace = true } = {}) {
     // Maintenant tout est synchrone : on ouvre une seule transaction
     const db = await openDB();
     return new Promise((resolve, reject) => {
-      const t = db.transaction(STORE_IMAGES, 'readwrite');
+      let t;
+      try {
+        t = db.transaction(STORE_IMAGES, 'readwrite');
+      } catch (e) { return reject(e); }
       const store = t.objectStore(STORE_IMAGES);
-      for (const rec of records) store.put(rec);
+      try {
+        for (const rec of records) store.put(rec);
+      } catch (e) {
+        try { t.abort(); } catch {}
+        return reject(e);
+      }
       t.oncomplete = () => resolve(records.length);
       t.onerror = () => reject(t.error);
+      t.onabort = () => reject(t.error || new Error('Transaction abortée'));
     });
   }
 

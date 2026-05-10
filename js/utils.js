@@ -115,19 +115,22 @@ export function fmtDate(iso) {
 // Redimensionne / compresse une image (avant stockage)
 export async function downscaleImage(file, { maxDim = 1400, quality = 0.85 } = {}) {
   const bmp = await createImageBitmap(file);
-  const ratio = Math.min(1, maxDim / Math.max(bmp.width, bmp.height));
-  const w = Math.round(bmp.width * ratio);
-  const h = Math.round(bmp.height * ratio);
-  const canvas = (typeof OffscreenCanvas !== 'undefined')
-    ? new OffscreenCanvas(w, h)
-    : Object.assign(document.createElement('canvas'), { width: w, height: h });
-  const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(bmp, 0, 0, w, h);
-  bmp.close && bmp.close();
-  const type = (file.type === 'image/png' || file.type === 'image/webp') ? 'image/webp' : 'image/jpeg';
-  if (canvas.convertToBlob) return canvas.convertToBlob({ type, quality });
-  return new Promise((res) => canvas.toBlob(res, type, quality));
+  try {
+    const ratio = Math.min(1, maxDim / Math.max(bmp.width, bmp.height));
+    const w = Math.round(bmp.width * ratio);
+    const h = Math.round(bmp.height * ratio);
+    const canvas = (typeof OffscreenCanvas !== 'undefined')
+      ? new OffscreenCanvas(w, h)
+      : Object.assign(document.createElement('canvas'), { width: w, height: h });
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bmp, 0, 0, w, h);
+    const type = (file.type === 'image/png' || file.type === 'image/webp') ? 'image/webp' : 'image/jpeg';
+    if (canvas.convertToBlob) return await canvas.convertToBlob({ type, quality });
+    return await new Promise((res) => canvas.toBlob(res, type, quality));
+  } finally {
+    bmp.close && bmp.close();
+  }
 }
 
 export function blobToObjectURL(blob) {
