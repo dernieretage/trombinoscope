@@ -14,7 +14,7 @@ import {
   renderCard, renderRow, renderProfileDetail, applyAvatar,
   toast, confirmDialog,
 } from './ui.js';
-import { fetchInstagramProfile, fetchImageAsBlob, isMicrolinkRateLimited, resetMicrolinkRateLimit } from './ig.js';
+import { fetchInstagramProfile, fetchInstagramProfilePicOnly, fetchImageAsBlob, isMicrolinkRateLimited, resetMicrolinkRateLimit } from './ig.js';
 import {
   getSyncConfig, setSyncToken, setSyncAutoSync, clearSyncConfig,
   testConnection as testSyncConnection,
@@ -301,6 +301,7 @@ function hookUI() {
     if (a === 'import') return triggerImport();
     if (a === 'bulk-import') return openBulkDialog();
     if (a === 'bulk-ig-photos') return bulkImportInstagramPhotos();
+    if (a === 'bulk-ig-fast') return bulkImportProfilePicsOnly();
     if (a === 'copy-emails') return copyEmailsOfFiltered();
     if (a === 'copy-handles') return copyHandlesOfFiltered();
     if (a === 'seed') return doReSeed();
@@ -386,9 +387,9 @@ function hookUI() {
     }
   });
 
-  // bouton "Scanner photos IG" en évidence
+  // bouton "Scanner photos IG" en évidence — mode rapide par défaut (Dumpor, sans rate-limit)
   const igBulkBtn = $('#ig-bulk-btn');
-  igBulkBtn.addEventListener('click', () => bulkImportInstagramPhotos());
+  igBulkBtn.addEventListener('click', () => bulkImportProfilePicsOnly());
   // Mettre à jour le badge avec le nombre de profils sans images
   const updateIgBulkCount = () => {
     const without = STATE.profiles.filter(p => p.instagram && !STATE.imagesByProfile.get(p.id)?.length).length;
@@ -788,6 +789,90 @@ function hookEditForm() {
     for (const f of files) pendingFiles.push(f);
     refreshDropzonePreview();
   }
+}
+
+async function importInstagramProfilePicOnly(profile, { silent = false } = {}) {
+  if (!profile.instagram) return { added: 0, errors: ['No handle'] };
+  try {
+    const result = await fetchInstagramProfilePicOnly(profile.instagram);
+    if (!result.profilePic?.url) {
+      return { added: 0, errors: result.errors };
+    }
+    let blob;
+    try {
+      const raw = await fetchImageAsBlob(result.profilePic.url);
+      if (raw.size < 2000) throw new Error('image trop petite (< 2KB)');
+      blob = await downscaleImage(raw, { maxDim: 1080, quality: 0.82 }).catch(() => raw);
+    } catch (e) {
+      return { added: 0, errors: ['blob: ' + e.message] };
+    }
+    await deleteProfileImages(profile.id);
+    await saveImage(profile.id, 0, blob);
+    if (result.bio && !profile.bio) profile.bio = result.bio;
+    profile.updatedAt = new Date().toISOString();
+    await saveProfile(profile);
+    const imgs = await getProfileImages(profile.id);
+    STATE.imagesByProfile.set(profile.id, imgs);
+    return { added: 1, errors: [] };
+  } catch (e) {
+    return { added: 0, errors: [e.message] };
+  }
+}
+
+let bulkFastRunning = false;
+async function bulkImportProfilePicsOnly({ skipConfirm = false } = {}) {
+  if (bulkFastRunning) {
+    toast('Un bulk est déjà en cours.', { type: 'warn' });
+    return;
+  }
+  const targets = STATE.profiles.filter(p => p.instagram && !STATE.imagesByProfile.get(p.id)?.length);
+  if (!targets.length) {
+    toast('Tous les profils Instagram ont déjà au moins une image.', { type: 'ok' });
+    return;
+  }
+  if (!skipConfirm) {
+    const ok = await confirmDialog({
+      title: `Mode rapide : photo de profil seule pour ${targets.length} profils ?`,
+      text: `Ce mode utilise UNIQUEMENT Dumpor (pas de Microlink, pas de rate limit). ` +
+            `Vous obtiendrez la photo de profil et la bio de chaque profil. ` +
+            `Pour avoir aussi les 9 derniers posts, utilisez "Scanner photos IG" plus tard ` +
+            `(quand votre quota Microlink sera reset).`,
+      okLabel: 'Lancer',
+      danger: false,
+    });
+    if (!ok) return;
+  }
+  bulkFastRunning = true;
+  $('#ig-bulk-btn')?.classList.add('is-running');
+  const persist = toast(`Mode rapide : 0 / ${targets.length}…`, { type: 'info', timeout: 0 });
+  let done = 0, success = 0;
+  for (const p of targets) {
+    const card = document.querySelector(`.card[data-id="${p.id}"]`);
+    card?.classList.add('is-importing');
+    try {
+      const r = await importInstagramProfilePicOnly(p, { silent: true });
+      if (r.added > 0) success++;
+    } catch (e) { /* continue */ }
+    card?.classList.remove('is-importing');
+    done++;
+    persist.dismiss();
+    const t = toast(`Mode rapide : ${done} / ${targets.length} (${success} OK)`, { type: 'info', timeout: 0 });
+    persist.dismiss = t.dismiss;
+    render();
+    await new Promise(r => setTimeout(r, 350)); // throttle léger
+  }
+  persist.dismiss();
+  bulkFastRunning = false;
+  $('#ig-bulk-btn')?.classList.remove('is-running');
+  window.__updateIgBulkCount?.();
+  render();
+  toast(`Mode rapide terminé : ${success}/${targets.length} photos de profil ajoutées.`, { type: 'ok', timeout: 8000 });
+  maybeSchedulePush();
+  return { success, totalTargets: targets.length };
+}
+
+if (typeof window !== 'undefined') {
+  window.__bulkProfilePicsOnly = bulkImportProfilePicsOnly;
 }
 
 async function importInstagramForProfile(profile, { silent = false } = {}) {

@@ -159,6 +159,24 @@ export async function fetchImageAsBlob(url) {
 // ============= ORCHESTRATION =============
 
 /**
+ * Mode "fast" : ne récupère QUE la photo de profil via Dumpor (pas de Microlink, pas de rate limit).
+ * Idéal pour enrichir rapidement de nombreux profils sans utiliser le quota Microlink.
+ */
+export async function fetchInstagramProfilePicOnly(handle, { onProgress = () => {} } = {}) {
+  const h = cleanHandle(handle);
+  if (!h) throw new Error('Handle vide.');
+  onProgress({ message: `Dumpor @${h}…` });
+  const p = await fetchInstagramProfilePic(h);
+  return {
+    handle: h,
+    profilePic: p?.url ? p : null,
+    posts: [],
+    bio: p?.bio || '',
+    errors: p?.url ? [] : ['Dumpor: pas de photo de profil disponible'],
+  };
+}
+
+/**
  * Récupère tout pour un profil Instagram en une fois.
  * @returns {profilePic, posts: [{imageUrl, caption}], bio}
  */
