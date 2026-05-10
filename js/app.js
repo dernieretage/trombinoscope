@@ -832,8 +832,11 @@ function applyFilters() {
       if (ra !== rb) return ra - rb;
       return (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base' });
     },
-    recent: (a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''),
-    created: (a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''),
+    // Comparaison numérique sur les timestamps : un null/undefined devient 0
+    // (= placé en dernier en tri "récent" desc), au lieu de la chaîne vide qui
+    // est lexicalement < toute date ISO.
+    recent: (a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0),
+    created: (a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0),
     profession: (a, b) => (profileProfessions(a)[0] || '').localeCompare(profileProfessions(b)[0] || '', 'fr') || (a.name || '').localeCompare(b.name || '', 'fr'),
     status: (a, b) => (STATUS_RANK[a.status ?? ''] ?? 4) - (STATUS_RANK[b.status ?? ''] ?? 4) || (a.name || '').localeCompare(b.name || '', 'fr'),
   };
@@ -957,9 +960,21 @@ async function openProfileDialog(id) {
 function navigateProfile(direction) {
   if (!STATE.current) return;
   const list = STATE.filtered;
-  if (!list.length) return;
+  if (!list.length) {
+    // Plus aucun profil dans la liste filtrée → fermer le dialog
+    const dlg = $('#profile-dialog');
+    if (dlg?.open) dlg.close();
+    STATE.current = null;
+    return;
+  }
   const idx = list.findIndex(p => p.id === STATE.current.id);
-  if (idx === -1) return;
+  if (idx === -1) {
+    // Le profil courant n'existe plus dans la liste filtrée (supprimé ou
+    // filtré) → on saute sur le voisin selon la direction
+    const fallbackIdx = direction > 0 ? 0 : list.length - 1;
+    openProfileDialog(list[fallbackIdx].id);
+    return;
+  }
   const nextIdx = (idx + direction + list.length) % list.length;
   openProfileDialog(list[nextIdx].id);
 }
@@ -1064,6 +1079,12 @@ function hookEditForm() {
   // submit
   $('#edit-save').addEventListener('click', async (e) => {
     e.preventDefault();
+    const btn = e.currentTarget;
+    // Anti double-click : ignorer si déjà en cours
+    if (btn.dataset.busy === '1') return;
+    btn.dataset.busy = '1';
+    btn.disabled = true;
+    try {
     const data = Object.fromEntries(new FormData(form).entries());
     if (!data.name?.trim()) {
       toast('Le nom est requis.', { type: 'warn' });
@@ -1118,6 +1139,10 @@ function hookEditForm() {
     $('#edit-dialog').close();
     maybeSchedulePush();
     toast(existing ? 'Profil mis à jour.' : 'Profil créé.', { type: 'ok' });
+    } finally {
+      btn.dataset.busy = '';
+      btn.disabled = false;
+    }
   });
 
   $('#edit-delete').addEventListener('click', async () => {
@@ -1634,7 +1659,7 @@ async function doExport() {
 async function doExportCsv() {
   const profiles = STATE.profiles;
   if (!profiles.length) { toast('Aucun profil à exporter.', { type: 'warn' }); return; }
-  const cols = ['name', 'profession', 'instagram', 'phone', 'email', 'website', 'location', 'tags', 'status', 'notes', 'createdAt', 'updatedAt'];
+  const cols = ['name', 'professions', 'instagram', 'phone', 'email', 'website', 'location', 'tags', 'status', 'notes', 'createdAt', 'updatedAt'];
   const escapeCsv = (v) => {
     if (v == null) return '';
     const s = Array.isArray(v) ? v.join(', ') : String(v);
@@ -1667,7 +1692,8 @@ function triggerImport() {
     const f = input.files?.[0];
     if (!f) return;
     try {
-      const text = await f.text();
+      // Strip BOM UTF-8 si présent (export Excel/Notepad ajoute souvent ﻿)
+      const text = (await f.text()).replace(/^﻿/, '');
       const data = JSON.parse(text);
       if (!data.profiles || !Array.isArray(data.profiles)) throw new Error('Format invalide');
       const replace = await confirmDialog({
