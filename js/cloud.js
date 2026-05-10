@@ -407,6 +407,46 @@ export function scheduleCloudPush(delayMs = 4000) {
   }, delayMs);
 }
 
+// ============= LIEN D'INVITATION (partager le token entre devices) =============
+
+/**
+ * Génère un lien d'invitation contenant le PAT cloud public en base64.
+ * À ouvrir sur tout autre appareil → configure auto le cloud → permet
+ * non seulement la lecture (déjà publique) mais aussi l'écriture
+ * de modifications depuis ce device.
+ */
+export async function generateCloudInviteLink() {
+  const token = await getMeta(META_TOKEN);
+  if (!token) throw new Error('Cloud non configuré — activez-le d\'abord.');
+  const payload = btoa(JSON.stringify({ ct: token, ts: Date.now() }));
+  const url = new URL(window.location.href);
+  url.searchParams.set('cloud', payload);
+  url.hash = '';
+  return url.toString();
+}
+
+/**
+ * Au démarrage : si l'URL contient ?cloud=xxx, configure le cloud token
+ * automatiquement. Le device pourra ensuite lire ET écrire le cloud public.
+ */
+export async function consumeCloudActivateParam() {
+  try {
+    const url = new URL(window.location.href);
+    const param = url.searchParams.get('cloud');
+    if (!param) return null;
+    const payload = JSON.parse(atob(param));
+    if (!payload.ct) return null;
+    await setMeta(META_TOKEN, payload.ct);
+    await setMeta(META_AUTO, true);
+    url.searchParams.delete('cloud');
+    history.replaceState(null, '', url.toString());
+    return { activated: true };
+  } catch (e) {
+    console.error('[Cloud] consumeCloudActivateParam failed:', e.message);
+    return { activated: false, error: e.message };
+  }
+}
+
 // ============= DIAGNOSTIC =============
 
 export async function diagnoseCloud() {

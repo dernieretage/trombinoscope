@@ -26,6 +26,7 @@ import {
   getCloudConfig, setCloudToken, setCloudAuto, clearCloudConfig,
   testCloudConnection, pushCloud, pullCloud, setupCloudAutoPull,
   scheduleCloudPush, onCloudStateChange, diagnoseCloud, markCloudDirty,
+  generateCloudInviteLink, consumeCloudActivateParam,
 } from './cloud.js';
 import {
   getAiKey, setAiKey, getAiModel, setAiModel,
@@ -138,6 +139,15 @@ const STATE = {
   // Sync init (en arrière-plan, ne bloque pas l'UI)
   setupSyncListeners();
   setupCloudListeners();
+
+  // Lien magique CLOUD : ?cloud=xxx → configure le token cloud auto
+  consumeCloudActivateParam().then(async (r) => {
+    if (r?.activated) {
+      toast('✓ Cloud public activé : vous pouvez désormais sauvegarder vos modifications depuis cet appareil.', { type: 'ok', timeout: 6000 });
+      updateSyncPill();
+      updateSaveButton();
+    }
+  });
 
   // Cloud public : auto-pull au démarrage si manifest existe en ligne
   // (PRIORITÉ #1 — pas de configuration nécessaire sur les nouveaux appareils)
@@ -1904,6 +1914,29 @@ function hookSettingsDialog() {
       refreshSettingsView();
     } catch (e) { toast('Push cloud échoué : ' + e.message, { type: 'err' }); }
   });
+  $('#cloud-invite-btn').addEventListener('click', async () => {
+    try {
+      const link = await generateCloudInviteLink();
+      const out = $('#cloud-invite-out');
+      const help = $('#cloud-invite-help');
+      out.value = link;
+      out.style.display = 'block';
+      help.style.display = 'block';
+      help.textContent = '✓ Copiez ce lien et ouvrez-le sur l\'autre appareil. Il pourra écrire vos modifications dans le cloud.';
+      help.className = 'settings__small ok';
+      out.focus(); out.select();
+      try {
+        await navigator.clipboard.writeText(link);
+        help.textContent = '✓ Lien copié dans le presse-papier. Ouvrez-le sur l\'autre appareil pour activer l\'écriture cloud.';
+      } catch {}
+    } catch (e) {
+      const help = $('#cloud-invite-help');
+      help.style.display = 'block';
+      help.textContent = '✗ ' + e.message;
+      help.className = 'settings__small err';
+    }
+  });
+
   $('#cloud-disconnect-btn').addEventListener('click', async () => {
     const ok = await confirmDialog({
       title: 'Déconnecter le cloud ?',

@@ -442,6 +442,19 @@
           </div>
         </div>
         <small class="settings__small" id="cloud-last-info"></small>
+        <hr class="menu__sep" style="margin: 14px 0;" />
+        <p class="settings__hint" style="margin-top: 0;">
+          📲 <strong>Pour modifier les profils depuis Chrome / mobile / autre appareil</strong> sans
+          recoller le token : générez ici un lien magique. L'autre appareil l'ouvre une fois
+          → le token cloud est configuré automatiquement et permet d'écrire les modifications.
+        </p>
+        <div class="settings__actions" style="margin-top: 8px;">
+          <button type="button" class="btn btn--primary" id="cloud-invite-btn">
+            🔗 Générer un lien pour autre appareil
+          </button>
+        </div>
+        <textarea id="cloud-invite-out" rows="3" readonly style="display:none; margin-top: 8px; width: 100%; font-family: ui-monospace, monospace; font-size: 11px; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); color: var(--text); word-break: break-all;"></textarea>
+        <small id="cloud-invite-help" class="settings__small" style="display:none; margin-top: 4px;"></small>
       </section>
 
       <!-- Sync GitHub Gist (legacy) -->
