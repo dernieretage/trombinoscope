@@ -944,21 +944,28 @@ function applyFilters() {
   }
 
   const STATUS_RANK = { favori: 0, en_cours: 1, collabore: 2, a_contacter: 3, '': 4 };
+  // Collator FR optimisé : usage:'sort' pour ordre déterministe, caseFirst:'lower'
+  // pour stabilité, ignorePunctuation pour ignorer les tirets/apostrophes parasites.
+  const FR_COLLATOR = new Intl.Collator('fr', {
+    usage: 'sort',
+    sensitivity: 'base',
+    caseFirst: 'lower',
+    ignorePunctuation: true,
+    numeric: true, // "Profil 2" avant "Profil 10"
+  });
+  const byName = (a, b) => FR_COLLATOR.compare(a.name || '', b.name || '');
   const cmp = {
-    name: (a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base' }),
+    name: byName,
     favoris: (a, b) => {
       const ra = a.status === 'favori' ? 0 : 1;
       const rb = b.status === 'favori' ? 0 : 1;
       if (ra !== rb) return ra - rb;
-      return (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base' });
+      return byName(a, b);
     },
-    // Comparaison numérique sur les timestamps : un null/undefined devient 0
-    // (= placé en dernier en tri "récent" desc), au lieu de la chaîne vide qui
-    // est lexicalement < toute date ISO.
     recent: (a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0),
     created: (a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0),
-    profession: (a, b) => (profileProfessions(a)[0] || '').localeCompare(profileProfessions(b)[0] || '', 'fr') || (a.name || '').localeCompare(b.name || '', 'fr'),
-    status: (a, b) => (STATUS_RANK[a.status ?? ''] ?? 4) - (STATUS_RANK[b.status ?? ''] ?? 4) || (a.name || '').localeCompare(b.name || '', 'fr'),
+    profession: (a, b) => FR_COLLATOR.compare(profileProfessions(a)[0] || '', profileProfessions(b)[0] || '') || byName(a, b),
+    status: (a, b) => (STATUS_RANK[a.status ?? ''] ?? 4) - (STATUS_RANK[b.status ?? ''] ?? 4) || byName(a, b),
   };
   list = [...list].sort(cmp[sort] || cmp.name);
   STATE.filtered = list;
@@ -1801,14 +1808,16 @@ async function doExportCsv() {
   const escapeCsv = (v) => {
     if (v == null) return '';
     const s = Array.isArray(v) ? v.join(', ') : String(v);
-    if (/[",\n;]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    // Inclut \r et \n (Mac/Windows/Unix line endings)
+    if (/[",\n\r;]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
     return s;
   };
   const rows = [cols.join(',')];
   for (const p of profiles) {
+    // CRLF est le séparateur de lignes RFC 4180 (compat Excel)
     rows.push(cols.map(c => escapeCsv(p[c])).join(','));
   }
-  const csv = '﻿' + rows.join('\n'); // BOM for Excel
+  const csv = '﻿' + rows.join('\r\n'); // BOM for Excel + CRLF RFC 4180
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -2740,10 +2749,25 @@ function renderStats(filtered) {
   bar.hidden = false;
   animateNumber($('#stat-total'), STATE.profiles.length);
   animateNumber($('#stat-shown'), filtered.length);
-  const pros = new Set(STATE.profiles.map(p => p.profession).filter(Boolean));
+  // Compter UNIQUEMENT les professions du nouveau schéma (array). L'ancien
+  // champ 'profession' (string) est nettoyé par la migration au boot.
+  const pros = new Set();
+  for (const p of STATE.profiles) {
+    for (const pr of (p.professions || [])) if (pr) pros.add(pr);
+    if (p.profession && (!p.professions || !p.professions.length)) pros.add(p.profession);
+  }
   animateNumber($('#stat-pros'), pros.size);
   const fav = STATE.profiles.filter(p => p.status === 'favori').length;
   animateNumber($('#stat-fav'), fav);
+  // Pluralization
+  const setLabel = (id, count, singular, plural) => {
+    const el = document.querySelector(`#${id} + .stat__label`);
+    if (el) el.textContent = count > 1 ? plural : singular;
+  };
+  setLabel('stat-total', STATE.profiles.length, 'profil', 'profils');
+  setLabel('stat-shown', filtered.length, 'affiché', 'affichés');
+  setLabel('stat-pros', pros.size, 'métier', 'métiers');
+  setLabel('stat-fav', fav, 'favori', 'favoris');
   const filtered_active = STATE.filters.profession !== 'all' || STATE.filters.status || STATE.filters.query;
   $('#stat-clear').hidden = !filtered_active;
 }
