@@ -12,8 +12,8 @@
   --line:         rgba(234, 221, 201, .10);
   --line-strong:  rgba(234, 221, 201, .22);
   --text:         #f3ead9;
-  --text-muted:   #b8ad95;
-  --text-faint:   #7d745f;
+  --text-muted:   #c4b99c;
+  --text-faint:   #968d76;
   --accent:       #e8a87c;       /* coral / terracotta */
   --accent-2:     #f5c89b;
   --accent-ink:   #1d1206;
@@ -55,8 +55,8 @@
   --line:         rgba(20,15,8,.10);
   --line-strong:  rgba(20,15,8,.22);
   --text:         #1d1a14;
-  --text-muted:   #57523f;
-  --text-faint:   #8a8270;
+  --text-muted:   #4a4636;
+  --text-faint:   #6b6553;
   --accent:       #c97548;
   --accent-2:     #e29262;
   --accent-ink:   #fff;
