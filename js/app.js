@@ -23,6 +23,11 @@ import {
   generateInviteLink, consumeActivateParam,
 } from './sync.js';
 import {
+  getCloudConfig, setCloudToken, setCloudAuto, clearCloudConfig,
+  testCloudConnection, pushCloud, pullCloud, setupCloudAutoPull,
+  scheduleCloudPush, onCloudStateChange, diagnoseCloud, markCloudDirty,
+} from './cloud.js';
+import {
   getAiKey, setAiKey, getAiModel, setAiModel,
   isAiConfigured, scanProfileWithAi, testAiConnection,
 } from './ai.js';
@@ -132,10 +137,31 @@ const STATE = {
 
   // Sync init (en arrière-plan, ne bloque pas l'UI)
   setupSyncListeners();
-  // Si l'URL contient ?activate=xxx, auto-config sync + auto-pull (lien magique)
+  setupCloudListeners();
+
+  // Cloud public : auto-pull au démarrage si manifest existe en ligne
+  // (PRIORITÉ #1 — pas de configuration nécessaire sur les nouveaux appareils)
+  setupCloudAutoPull().then(async (r) => {
+    if (r?.autoPulled && r.profiles > 0) {
+      STATE.profiles = await getAllProfiles();
+      STATE.imagesByProfile.clear();
+      for (const p of STATE.profiles) {
+        const imgs = await getProfileImages(p.id);
+        if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
+      }
+      buildFilterChips();
+      buildProfessionDatalist();
+      render();
+      window.__updateIgBulkCount?.();
+      updateSyncPill();
+      updateSaveButton();
+      toast(`✓ Cloud public : ${r.profiles} profils + ${r.images}/${r.expectedChunks * 9 || r.images} images chargés.`, { type: 'ok', timeout: 6000 });
+    }
+  }).catch((e) => console.warn('[Boot] Cloud auto-pull skipped:', e.message));
+
+  // Si l'URL contient ?activate=xxx, auto-config sync (lien magique)
   consumeActivateParam().then(async (r) => {
     if (r?.activated && r.pulled) {
-      // Recharger STATE complet
       STATE.profiles = await getAllProfiles();
       STATE.imagesByProfile.clear();
       for (const p of STATE.profiles) {
@@ -153,6 +179,7 @@ const STATE = {
       toast('Lien d\'invitation invalide : ' + (r.error || 'erreur'), { type: 'err', timeout: 5000 });
     }
   });
+
   setupAutoSync().then(async (ready) => {
     updateSyncPill();
     updateSaveButton();
@@ -410,40 +437,53 @@ function hookUI() {
   // paste images globally (when not typing in a non-image field)
   document.addEventListener('paste', onPaste);
 
-  // bouton "Sauvegarder" — comportement intelligent
+  // bouton "Sauvegarder" — utilise CLOUD PUBLIC en priorité, sinon Gist
   $('#save-btn').addEventListener('click', async () => {
-    const cfg = await getSyncConfig();
-    if (!cfg.token) {
-      // Pas configuré : ouvrir direct le modal Réglages avec focus sur la section sync
-      openSettingsDialog();
-      // Highlight la section sync
-      setTimeout(() => {
-        const dlg = $('#settings-dialog');
-        if (dlg?.open) {
-          const syncInput = $('#sync-token-input');
-          syncInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          syncInput?.focus();
-          // Pulse visuel
-          const section = syncInput?.closest('.settings__section');
-          if (section) {
-            section.style.transition = 'box-shadow .4s';
-            section.style.boxShadow = '0 0 0 3px var(--accent)';
-            setTimeout(() => { section.style.boxShadow = ''; }, 1500);
-          }
-        }
-      }, 300);
-      toast('Configurez la sync GitHub pour des sauvegardes auto cross-device.', {
-        type: 'info', timeout: 5000,
-      });
+    const cloudCfg = await getCloudConfig();
+    const syncCfg = await getSyncConfig();
+
+    // Cas 1 : cloud public configuré → push cloud
+    if (cloudCfg.token) {
+      try {
+        const r = await pushCloud();
+        toast(`✓ Cloud public : ${r.profiles} profils + ${r.images} images (${r.chunks} fichiers, ${r.sizeKb} Ko). Visible automatiquement sur tous appareils.`, { type: 'ok', timeout: 6000 });
+      } catch (e) {
+        toast('Push cloud échoué : ' + e.message, { type: 'err', timeout: 6000 });
+      }
       return;
     }
-    try {
-      const r = await syncPushNow();
-      const imgMsg = r.images ? ` + ${r.images} images (${r.chunks} fichiers)` : '';
-      toast(`✓ Sauvegarde cloud : ${r.profiles} profils${imgMsg} (${r.sizeKb} Ko).`, { type: 'ok', timeout: 4500 });
-    } catch (e) {
-      toast('Sauvegarde échouée : ' + e.message, { type: 'err', timeout: 6000 });
+
+    // Cas 2 : Gist configuré (legacy)
+    if (syncCfg.token) {
+      try {
+        const r = await syncPushNow();
+        const imgMsg = r.images ? ` + ${r.images} images (${r.chunks} fichiers)` : '';
+        toast(`✓ Sauvegarde Gist : ${r.profiles} profils${imgMsg} (${r.sizeKb} Ko).`, { type: 'ok', timeout: 4500 });
+      } catch (e) {
+        toast('Sauvegarde Gist échouée : ' + e.message, { type: 'err', timeout: 6000 });
+      }
+      return;
     }
+
+    // Cas 3 : rien configuré → ouvrir Réglages avec focus sur section CLOUD
+    openSettingsDialog();
+    setTimeout(() => {
+      const dlg = $('#settings-dialog');
+      if (dlg?.open) {
+        const cloudInput = $('#cloud-token-input');
+        cloudInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        cloudInput?.focus();
+        const section = cloudInput?.closest('.settings__section');
+        if (section) {
+          section.style.transition = 'box-shadow .4s';
+          section.style.boxShadow = '0 0 0 3px var(--accent)';
+          setTimeout(() => { section.style.boxShadow = ''; }, 1500);
+        }
+      }
+    }, 300);
+    toast('Activez le cloud public auto : vos données seront accessibles depuis n\'importe quel appareil.', {
+      type: 'info', timeout: 5000,
+    });
   });
 
   // bouton "Scanner photos IG" en évidence — mode rapide par défaut (Dumpor, sans rate-limit)
@@ -1700,10 +1740,41 @@ async function updateSyncPill(s) {
 }
 
 function maybeSchedulePush() {
-  if (isSyncReady()) {
-    schedulePush(2500);
-    markDirty();
-  }
+  // Priorité au cloud public si configuré
+  getCloudConfig().then(cfg => {
+    if (cfg.token) {
+      scheduleCloudPush(2500);
+      markDirty();
+    } else if (isSyncReady()) {
+      schedulePush(2500);
+      markDirty();
+    }
+  });
+}
+
+function setupCloudListeners() {
+  onCloudStateChange(async (s) => {
+    const btn = $('#save-btn');
+    if (!btn) return;
+    btn.classList.remove('is-dirty', 'is-syncing', 'is-error', 'is-saved', 'is-unconfigured');
+    const label = btn.querySelector('.savebtn__label');
+    if (s.status === 'pushing') {
+      btn.classList.add('is-syncing');
+      if (label) label.textContent = s.message || 'Push cloud…';
+    } else if (s.status === 'pulling') {
+      btn.classList.add('is-syncing');
+      if (label) label.textContent = s.message || 'Récupération…';
+    } else if (s.status === 'error') {
+      btn.classList.add('is-error');
+      if (label) label.textContent = 'Erreur';
+      btn.title = 'Erreur : ' + s.error;
+    } else if (s.status === 'idle' && s.lastSync) {
+      markClean();
+      btn.classList.add('is-saved');
+      if (label) label.textContent = 'Sauvegardé';
+      setTimeout(() => { if (!dirtyState) updateSaveButton(); }, 3000);
+    }
+  });
 }
 
 // ============= SAVE BUTTON STATE =============
@@ -1721,19 +1792,23 @@ function markClean() {
 async function updateSaveButton() {
   const btn = $('#save-btn');
   if (!btn) return;
-  btn.hidden = false; // toujours visible
-  const cfg = await getSyncConfig();
+  btn.hidden = false;
+  const cloudCfg = await getCloudConfig();
+  const syncCfg = await getSyncConfig();
+  const hasAnySync = cloudCfg.token || syncCfg.token;
   btn.classList.remove('is-dirty', 'is-syncing', 'is-error', 'is-saved', 'is-unconfigured');
   const label = btn.querySelector('.savebtn__label');
-  if (!cfg.token) {
+  if (!hasAnySync) {
     btn.classList.add('is-unconfigured');
-    if (label) label.textContent = 'Activer la sync';
-    btn.title = 'La sync cloud GitHub n\'est pas encore activée. Cliquez pour la configurer (1 minute).';
+    if (label) label.textContent = 'Activer le cloud';
+    btn.title = 'Le cloud public auto n\'est pas encore activé. Cliquez pour le configurer (1 min).';
     return;
   }
-  if (dirtyState) { btn.classList.add('is-dirty'); if (label) label.textContent = 'Sauvegarder'; btn.title = 'Modifications en attente — clic pour pusher maintenant (⌘S)'; }
-  else if (cfg.lastSync) { btn.classList.add('is-saved'); if (label) label.textContent = 'Sauvegardé'; btn.title = 'Tout est sauvegardé. Dernière sync : ' + new Date(cfg.lastSync).toLocaleString('fr-FR'); }
-  else { if (label) label.textContent = 'Sauvegarder'; btn.title = 'Push vers Gist GitHub (⌘S)'; }
+  const lastSync = cloudCfg.lastSync || syncCfg.lastSync;
+  const sourceName = cloudCfg.token ? 'cloud public' : 'Gist';
+  if (dirtyState) { btn.classList.add('is-dirty'); if (label) label.textContent = 'Sauvegarder'; btn.title = `Modifications en attente — clic pour pusher vers le ${sourceName} (⌘S)`; }
+  else if (lastSync) { btn.classList.add('is-saved'); if (label) label.textContent = 'Sauvegardé'; btn.title = `Tout est sauvegardé sur le ${sourceName}. Dernière sync : ` + new Date(lastSync).toLocaleString('fr-FR'); }
+  else { if (label) label.textContent = 'Sauvegarder'; btn.title = `Push vers ${sourceName} (⌘S)`; }
 }
 
 // ============= SETTINGS DIALOG =============
@@ -1750,7 +1825,77 @@ function hookSettingsDialog() {
   settingsHooked = true;
   const dlg = $('#settings-dialog');
 
-  // SYNC
+  // CLOUD PUBLIC (RECOMMANDÉ)
+  $('#cloud-test-btn').addEventListener('click', async () => {
+    const token = $('#cloud-token-input').value.trim();
+    const out = $('#cloud-test-result');
+    if (!token) { out.textContent = 'Saisissez un token.'; out.className = 'settings__small err'; return; }
+    out.textContent = 'Test en cours…'; out.className = 'settings__small';
+    try {
+      const u = await testCloudConnection(token);
+      out.textContent = `✓ Token OK (${u.repo}). Push initial vers le cloud public…`;
+      out.className = 'settings__small ok';
+      await setCloudToken(token);
+      try {
+        const r = await pushCloud();
+        out.textContent = `✓ Cloud activé : ${r.profiles} profils + ${r.images} images (${r.chunks} fichiers, ${r.sizeKb} Ko). Tout autre appareil verra ces données automatiquement.`;
+      } catch (pushErr) {
+        out.textContent = `⚠ Cloud activé mais push initial échoué : ${pushErr.message}`;
+        out.className = 'settings__small err';
+      }
+      updateSyncPill();
+      updateSaveButton();
+      refreshSettingsView();
+    } catch (e) {
+      out.textContent = '✗ ' + e.message;
+      out.className = 'settings__small err';
+    }
+  });
+  $('#cloud-auto-toggle').addEventListener('change', async (e) => {
+    await setCloudAuto(e.target.checked);
+  });
+  $('#cloud-pull-btn').addEventListener('click', async () => {
+    try {
+      const ok = await confirmDialog({
+        title: 'Récupérer du cloud public ?',
+        text: 'Cela remplacera vos données locales par celles du cloud.',
+        okLabel: 'Récupérer',
+      });
+      if (!ok) return;
+      const r = await pullCloud({ replace: true });
+      STATE.profiles = await getAllProfiles();
+      STATE.imagesByProfile.clear();
+      for (const p of STATE.profiles) {
+        const imgs = await getProfileImages(p.id);
+        if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
+      }
+      buildFilterChips();
+      render();
+      window.__updateIgBulkCount?.();
+      toast(`✓ ${r.profiles} profils + ${r.images} images chargés du cloud.`, { type: 'ok' });
+      refreshSettingsView();
+    } catch (e) { toast('Pull cloud échoué : ' + e.message, { type: 'err' }); }
+  });
+  $('#cloud-push-btn').addEventListener('click', async () => {
+    try {
+      const r = await pushCloud();
+      toast(`✓ ${r.profiles} profils + ${r.images} images poussés vers le cloud (${r.sizeKb} Ko).`, { type: 'ok', timeout: 5000 });
+      refreshSettingsView();
+    } catch (e) { toast('Push cloud échoué : ' + e.message, { type: 'err' }); }
+  });
+  $('#cloud-disconnect-btn').addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Déconnecter le cloud ?',
+      text: 'Vos données restent en local et sur le cloud public. Le token sera oublié sur cet appareil.',
+      okLabel: 'Déconnecter',
+    });
+    if (!ok) return;
+    await clearCloudConfig();
+    refreshSettingsView();
+    toast('Cloud déconnecté sur cet appareil.', { type: 'ok' });
+  });
+
+  // SYNC GIST (legacy)
   $('#sync-test-btn').addEventListener('click', async () => {
     const token = $('#sync-token-input').value.trim();
     const out = $('#sync-test-result');
@@ -1954,6 +2099,15 @@ async function refreshSettingsView() {
   $('#microlink-key-input').value = mlKey || '';
   $('#microlink-key-status').textContent = mlKey ? '✓ Clé active.' : 'Mode anonyme (50 req/jour).';
   $('#microlink-key-status').className = mlKey ? 'settings__small ok' : 'settings__small';
+
+  // Cloud public
+  const cloudCfg = await getCloudConfig();
+  $('#cloud-token-input').value = cloudCfg.token || '';
+  $('#cloud-auto-toggle').checked = cloudCfg.auto;
+  const cloudBadge = $('#cloud-status-badge');
+  cloudBadge.textContent = cloudCfg.token ? 'Activé' : 'Désactivé';
+  cloudBadge.classList.toggle('ok', !!cloudCfg.token);
+  $('#cloud-last-info').textContent = cloudCfg.lastSync ? `Dernière sync cloud : ${new Date(cloudCfg.lastSync).toLocaleString('fr-FR')}` : '';
 }
 
 // ============= AI SCAN ON PROFILE =============

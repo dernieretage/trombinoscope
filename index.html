@@ -402,10 +402,52 @@
     </header>
     <div class="settings__body">
 
-      <!-- Sync GitHub Gist -->
+      <!-- Cloud public (RECOMMANDÉ) -->
       <section class="settings__section">
         <header>
-          <h3>☁️ Synchronisation cross-device</h3>
+          <h3>☁️ Cloud public auto (recommandé)</h3>
+          <span class="settings__badge" id="cloud-status-badge">Désactivé</span>
+        </header>
+        <p class="settings__hint">
+          <strong>Stockage dans VOTRE repo GitHub</strong> — accessible automatiquement depuis
+          n'importe quel appareil sans configuration. Pas de PAT à coller sur Chrome / mobile,
+          juste ouvrir le site → données + photos chargées au premier load.
+        </p>
+        <div class="settings__cta">
+          <a class="btn btn--primary" href="https://github.com/settings/tokens/new?description=Trombinoscope%20cloud&scopes=public_repo" target="_blank" rel="noopener" style="text-decoration: none;">
+            ① Créer un token GitHub (scope public_repo)
+          </a>
+        </div>
+        <p class="settings__hint" style="margin-top: 12px;">
+          Cliquez sur « Generate token » sur la page GitHub qui s'ouvre, copiez le token et
+          collez-le ici :
+        </p>
+        <label class="field">
+          <span>② Token GitHub (commence par ghp_)</span>
+          <div style="display:flex; gap:6px;">
+            <input id="cloud-token-input" type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" />
+            <button type="button" class="btn btn--primary" id="cloud-test-btn">③ Activer le cloud</button>
+          </div>
+          <small id="cloud-test-result" class="settings__small"></small>
+        </label>
+        <div class="settings__row">
+          <label class="settings__check">
+            <input type="checkbox" id="cloud-auto-toggle" checked />
+            <span>Sauvegarde cloud automatique à chaque modification</span>
+          </label>
+          <div class="settings__actions">
+            <button type="button" class="btn btn--ghost" id="cloud-pull-btn">↓ Récupérer</button>
+            <button type="button" class="btn btn--ghost" id="cloud-push-btn">↑ Envoyer</button>
+            <button type="button" class="btn btn--danger" id="cloud-disconnect-btn">Déconnecter</button>
+          </div>
+        </div>
+        <small class="settings__small" id="cloud-last-info"></small>
+      </section>
+
+      <!-- Sync GitHub Gist (legacy) -->
+      <section class="settings__section">
+        <header>
+          <h3>📦 Synchronisation Gist (mode privé, optionnel)</h3>
           <span class="settings__badge" id="sync-status-badge">Désactivée</span>
         </header>
         <p class="settings__hint">
