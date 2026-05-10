@@ -1,7 +1,7 @@
 {
-  "version": "1.0",
-  "generatedAt": "2026-05-10T11:30:00Z",
-  "description": "Enrichissement des 53 profils via recherche web autonome (5 sub-agents Claude). Champs appliqués UNIQUEMENT si vides côté user (pas de override).",
+  "version": "1.1",
+  "generatedAt": "2026-05-10T11:42:00Z",
+  "description": "Enrichissement des 53 profils via recherche web autonome (6 sub-agents Claude). v1.1 : passage supplémentaire sur les 10 profils low-confidence pour creuser bios/locations/agences. Champs appliqués UNIQUEMENT si vides côté user (pas de override).",
   "profiles": {
     "victoiresimonney": {
       "name": "Victoire Simonney",
@@ -17,8 +17,10 @@
     },
     "charlesbeugniot": {
       "name": "Charles Beugniot",
-      "professions": ["Styliste"],
-      "tags": ["mode", "éditorial"],
+      "professions": ["Styliste", "Assistant styliste"],
+      "location": "Paris, France",
+      "bio": "Styliste / assistant styliste mode, ancien étudiant à ESMOD International. A travaillé comme styling assistant sur l'éditorial 'Jeux Défendus' pour PANSY Magazine (sous la direction du styliste Louis Guimard, photographie Alexandre Desmidt).",
+      "tags": ["mode", "éditorial", "assistant"],
       "confidence": "low"
     },
     "sinabraetz": {
@@ -34,17 +36,17 @@
     },
     "ohcharlz": {
       "name": "Charlotte Buchal",
-      "professions": ["Styliste", "Designer mode"],
-      "bio": "Designer et styliste, diplômée de ArtEZ University of the Arts (Pays-Bas, 2020). A travaillé comme styliste sur des éditoriaux dont Lampoon Magazine (photographie Peter Kaaden, 2024).",
-      "tags": ["mode", "éditorial", "design"],
+      "professions": ["Styliste", "Designer mode", "Consultante"],
+      "bio": "Styliste et designer mode (bio Instagram : 'stylist+consultant'). Diplômée de ArtEZ University of the Arts (Pays-Bas, 2020). A signé le styling de l'éditorial 'Flowers for Spring' pour Lampoon Magazine (2024, photographie Peter Kaaden).",
+      "tags": ["mode", "éditorial", "design", "consulting"],
       "confidence": "medium"
     },
     "sarah_lespagnol": {
       "name": "Sarah Lespagnol",
-      "professions": ["Styliste", "Designer mode"],
+      "professions": ["Styliste", "Designer mode", "Style Director"],
       "location": "Paris, France",
-      "bio": "Styliste et créatrice de mode, ancienne ESMOD Paris (2008), créatrice de la marque de prêt-à-porter Ystérike. Plus récemment Style Director chez Balibaris.",
-      "tags": ["mode", "prêt-à-porter", "styling"],
+      "bio": "Styliste et créatrice de mode, ancienne ESMOD Paris (promo 2008). Créatrice de la marque de prêt-à-porter féminin Ystérike (univers humoristique et rétro). Plus récemment Style Director chez Balibaris.",
+      "tags": ["mode", "prêt-à-porter", "styling", "menswear"],
       "confidence": "medium"
     },
     "paulinerobinboniface": {
@@ -133,8 +135,8 @@
       "name": "Marguerite Grandin",
       "professions": ["Styliste", "Modéliste", "Modiste"],
       "location": "Paris, France",
-      "bio": "Créatrice parisienne formée en stylisme/modélisme, autodidacte en chapellerie après avoir découvert un matériel de modiste vintage. Conçoit des pièces uniques de headwear destinées au prêt pour shootings éditoriaux et artistes.",
-      "tags": ["mode", "headwear", "millinery", "éditorial"],
+      "bio": "Styliste/modéliste créatrice parisienne, autodidacte en chapellerie/headwear après avoir découvert un matériel de modiste vintage. Conçoit des pièces uniques de headwear destinées au prêt pour shootings éditoriaux et artistes (clients dont Numéro Magazine). A pour ambition de collaborer avec stylistes puis avec opéras et théâtres.",
+      "tags": ["mode", "headwear", "millinery", "éditorial", "costume"],
       "confidence": "medium"
     },
     "andrea_colace": {
@@ -227,8 +229,9 @@
     "mizh_u": {
       "name": "MIZHU",
       "professions": ["Réalisateur", "VFX Artist"],
-      "bio": "Réalisateur et VFX Artist actif sur Instagram, identifié dans la bio comme Director & VFX Artist.",
-      "tags": ["clip", "vfx"],
+      "bio": "Réalisateur et VFX artist, membre du collectif file.ccn (avec @lazyed_zzz).",
+      "tags": ["clip", "vfx", "collectif"],
+      "agency": "file.ccn (collectif)",
       "confidence": "low"
     },
     "jeremiedanon": {
@@ -289,7 +292,8 @@
     "demi_chat": {
       "name": "Misha (Demi Chat)",
       "professions": ["Réalisateur"],
-      "tags": ["clip"],
+      "bio": "Réalisateur signant des visuels musicaux pour la scène francophone.",
+      "tags": ["clip", "visual"],
       "confidence": "low"
     },
     "renaud.labelle": {
@@ -443,7 +447,7 @@
       "name": "David Camarou",
       "professions": ["Réalisateur", "Assistant réalisateur"],
       "location": "France",
-      "bio": "Réalisateur et assistant réalisateur français. Crédité comme assistant réalisateur sur 'Le Royaume des Aveugles' de François Robic. Connu pour 'History of Darkness' (2025) et 'Loynes' (2025).",
+      "bio": "Réalisateur et assistant réalisateur français. Crédité comme assistant réalisateur sur 'Le Royaume des Aveugles' de François Robic (production Moderato Films). Connu pour 'History of Darkness' (2025) et 'Loynes' (2025).",
       "tags": ["cinéma", "court-métrage"],
       "confidence": "medium"
     },
