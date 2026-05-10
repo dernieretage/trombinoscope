@@ -45,7 +45,11 @@ export function parseInstagramHandle(input) {
   s = s.replace(/^@/, '');
   s = s.replace(/\/+$/, '');
   s = s.replace(/\/.*$/, '');
-  return s.toLowerCase();
+  s = s.replace(/\s+/g, ''); // remove all whitespace (Instagram doesn't allow spaces)
+  s = s.toLowerCase();
+  // Instagram handles : 1-30 chars, alphanumeric + . _ uniquement
+  if (!/^[a-z0-9._]{1,30}$/.test(s)) return '';
+  return s;
 }
 
 // Devine un nom à partir d'un handle
