@@ -12,6 +12,12 @@ import { getMeta, setMeta } from './store.js';
 
 const JINA_BASE = 'https://r.jina.ai/';
 const MICROLINK_BASE = 'https://api.microlink.io/?url=';
+const MICROLINK_PRO_BASE = 'https://pro.microlink.io/?url='; // avec clé API
+
+// État global rate-limit
+let _microlinkRateLimited = false;
+export function isMicrolinkRateLimited() { return _microlinkRateLimited; }
+export function resetMicrolinkRateLimit() { _microlinkRateLimited = false; }
 
 // ============= UTILITAIRES =============
 
@@ -31,9 +37,16 @@ async function jinaGet(url, opts = {}) {
 }
 
 async function microlinkGet(url) {
-  const r = await fetch(MICROLINK_BASE + encodeURIComponent(url), {
-    headers: { 'Accept': 'application/json' },
-  });
+  // Si clé API configurée, utiliser le plan Pro (1000+ req/jour selon plan)
+  const apiKey = await getMeta('microlink_api_key');
+  const base = apiKey ? MICROLINK_PRO_BASE : MICROLINK_BASE;
+  const headers = { 'Accept': 'application/json' };
+  if (apiKey) headers['x-api-key'] = apiKey;
+  const r = await fetch(base + encodeURIComponent(url), { headers });
+  if (r.status === 429) {
+    _microlinkRateLimited = true;
+    throw new Error('MICROLINK_RATE_LIMITED');
+  }
   if (!r.ok) throw new Error(`Microlink ${r.status}`);
   const j = await r.json();
   return j?.data || null;
@@ -173,14 +186,19 @@ export async function fetchInstagramProfile(handle, { onProgress = () => {}, pos
   }
 
   // 3) Image de chaque post (en parallèle, throttle 3 simultanés)
+  // Si on est rate-limited, on stop tout sur le premier échec
   if (postUrls.length) {
     onProgress({ step: 'posts', message: `Récupération de ${postUrls.length} images de posts…`, total: postUrls.length });
     const posts = await runWithConcurrency(postUrls, 3, async (url, i) => {
+      if (_microlinkRateLimited) return null; // skip si déjà rate-limited
       try {
         const img = await fetchPostImage(url);
         onProgress({ step: 'posts', message: `Post ${i + 1}/${postUrls.length} OK`, current: i + 1, total: postUrls.length });
         return { ...img, postUrl: url };
       } catch (e) {
+        if (e.message === 'MICROLINK_RATE_LIMITED') {
+          throw e; // propage pour stopper le bulk parent
+        }
         onProgress({ step: 'posts', message: `Post ${i + 1} : ${e.message}`, current: i + 1, total: postUrls.length });
         return null;
       }

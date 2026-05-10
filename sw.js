@@ -1,5 +1,5 @@
 // Service worker minimal — cache-first pour les assets statiques
-const VERSION = 'trombinoscope-v9';
+const VERSION = 'trombinoscope-v10';
 const ASSETS = [
   './',
   './index.html',

@@ -14,7 +14,7 @@ import {
   renderCard, renderRow, renderProfileDetail, applyAvatar,
   toast, confirmDialog,
 } from './ui.js';
-import { fetchInstagramProfile, fetchImageAsBlob } from './ig.js';
+import { fetchInstagramProfile, fetchImageAsBlob, isMicrolinkRateLimited, resetMicrolinkRateLimit } from './ig.js';
 import {
   getSyncConfig, setSyncToken, setSyncAutoSync, clearSyncConfig,
   testConnection as testSyncConnection,
@@ -904,7 +904,9 @@ async function bulkImportInstagramPhotos({ skipConfirm = false } = {}) {
   const persist = toast(`Bulk IG : 0 / ${targets.length}…`, { type: 'info', timeout: 0 });
   let done = 0, success = 0, totalImages = 0;
 
+  let rateLimitHit = false;
   for (const p of targets) {
+    if (rateLimitHit) break;
     const card = document.querySelector(`.card[data-id="${p.id}"]`);
     card?.classList.add('is-importing');
     try {
@@ -913,13 +915,22 @@ async function bulkImportInstagramPhotos({ skipConfirm = false } = {}) {
         success++;
         totalImages += r.added;
       }
-    } catch (e) { /* continue */ }
+      // Vérifier si on a hit le rate limit pendant ce profil
+      if (isMicrolinkRateLimited()) {
+        rateLimitHit = true;
+      }
+    } catch (e) {
+      if (e.message === 'MICROLINK_RATE_LIMITED' || isMicrolinkRateLimited()) {
+        rateLimitHit = true;
+      }
+    }
     card?.classList.remove('is-importing');
     done++;
     persist.dismiss();
     const t = toast(`Bulk IG : ${done} / ${targets.length} (${success} OK, ${totalImages} images)`, { type: 'info', timeout: 0 });
     persist.dismiss = t.dismiss;
     render();
+    if (rateLimitHit) break;
     // throttle pour éviter rate-limiting
     await new Promise(r => setTimeout(r, 800));
   }
@@ -929,9 +940,18 @@ async function bulkImportInstagramPhotos({ skipConfirm = false } = {}) {
   bulkRunning = false;
   $('#ig-bulk-btn')?.classList.remove('is-running');
   window.__updateIgBulkCount?.();
-  toast(`Bulk IG terminé : ${success}/${targets.length} profils enrichis, ${totalImages} images au total.`, { type: 'ok', timeout: 8000 });
+  if (rateLimitHit) {
+    toast(`Bulk arrêté : Microlink rate-limit atteint (50 req/jour anonyme). ` +
+          `${success} profil${success > 1 ? 's' : ''} ajouté${success > 1 ? 's' : ''} (${totalImages} images). ` +
+          `Réessayez demain ou ajoutez une clé API Microlink dans Réglages.`, {
+      type: 'warn', timeout: 12000,
+      action: { label: 'Réglages', onClick: () => openSettingsDialog() },
+    });
+  } else {
+    toast(`Bulk IG terminé : ${success}/${targets.length} profils enrichis, ${totalImages} images au total.`, { type: 'ok', timeout: 8000 });
+  }
   maybeSchedulePush();
-  return { success, totalImages, totalTargets: targets.length };
+  return { success, totalImages, totalTargets: targets.length, rateLimitHit };
 }
 
 // Exposer pour tests externes / pilotage
@@ -1568,6 +1588,22 @@ function hookSettingsDialog() {
     await setAiModel(e.target.value);
   });
 
+  // Microlink key
+  $('#microlink-save-btn').addEventListener('click', async () => {
+    const key = $('#microlink-key-input').value.trim();
+    if (!key) { $('#microlink-key-status').textContent = 'Saisissez une clé.'; $('#microlink-key-status').className = 'settings__small err'; return; }
+    await setMeta('microlink_api_key', key);
+    resetMicrolinkRateLimit();
+    $('#microlink-key-status').textContent = '✓ Clé enregistrée. Le quota est désormais celui de votre plan Microlink.';
+    $('#microlink-key-status').className = 'settings__small ok';
+  });
+  $('#microlink-clear-btn').addEventListener('click', async () => {
+    await setMeta('microlink_api_key', null);
+    $('#microlink-key-input').value = '';
+    $('#microlink-key-status').textContent = 'Clé effacée. Mode anonyme (50 req/jour).';
+    $('#microlink-key-status').className = 'settings__small';
+  });
+
   $('#ai-disconnect-btn').addEventListener('click', async () => {
     const ok = await confirmDialog({
       title: 'Effacer la clé API Anthropic ?',
@@ -1597,6 +1633,11 @@ async function refreshSettingsView() {
   const aiBadge = $('#ai-status-badge');
   aiBadge.textContent = aiKey ? 'Configuré' : 'Désactivé';
   aiBadge.classList.toggle('ok', !!aiKey);
+
+  const mlKey = await getMeta('microlink_api_key');
+  $('#microlink-key-input').value = mlKey || '';
+  $('#microlink-key-status').textContent = mlKey ? '✓ Clé active.' : 'Mode anonyme (50 req/jour).';
+  $('#microlink-key-status').className = mlKey ? 'settings__small ok' : 'settings__small';
 }
 
 // ============= AI SCAN ON PROFILE =============

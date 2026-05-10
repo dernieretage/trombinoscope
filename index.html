@@ -466,10 +466,25 @@
           <span class="settings__badge ok">Actif</span>
         </header>
         <p class="settings__hint">
-          Le bouton <strong>« Importer Instagram »</strong> de chaque fiche tente de récupérer
-          la photo de profil et les 9 dernières images publiques via plusieurs proxys gratuits.
-          Instagram peut bloquer certaines requêtes — réessayez ou utilisez le drag-and-drop manuel.
+          Le bouton <strong>« Scanner photos IG »</strong> récupère la photo de profil et
+          les 9 dernières images publiques via Microlink + DuckDuckGo + Dumpor.
+          <strong>Limite anonyme :</strong> 50 requêtes/jour Microlink — soit ~5 profils/jour.
+          Pour booster, ajoutez une clé Microlink (50 req/jour gratuit avec compte) :
         </p>
+        <ol class="settings__steps">
+          <li>Créez un compte gratuit sur <a href="https://microlink.io/" target="_blank" rel="noopener">microlink.io</a></li>
+          <li>Récupérez votre clé API dans le dashboard.</li>
+          <li>Collez-la ci-dessous (stockée localement).</li>
+        </ol>
+        <label class="field">
+          <span>Clé API Microlink (optionnelle)</span>
+          <input id="microlink-key-input" type="password" placeholder="ml_…" autocomplete="off" />
+          <small class="settings__small" id="microlink-key-status"></small>
+        </label>
+        <div class="settings__actions">
+          <button type="button" class="btn btn--ghost" id="microlink-save-btn">Enregistrer la clé</button>
+          <button type="button" class="btn btn--ghost" id="microlink-clear-btn">Effacer</button>
+        </div>
       </section>
 
     </div>
