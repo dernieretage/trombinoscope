@@ -294,10 +294,11 @@ export async function exportAllChunked({ chunkBytes = 600_000 } = {}) {
     imageChunks: chunks.length,
     totalImages: allImages.length,
   };
-  result.files['trombinoscope.json'] = JSON.stringify(manifest);
+  // Pretty-print pour le manifest (lisible si l'user inspecte le repo GitHub).
+  result.files['trombinoscope.json'] = JSON.stringify(manifest, null, 2);
   result.totalSize += result.files['trombinoscope.json'].length;
 
-  // Fichiers de chunks
+  // Fichiers de chunks (pas de pretty-print : ils sont volumineux et binaires-lookalike)
   chunks.forEach((chunk, i) => {
     const fname = `trombinoscope-images-${String(i + 1).padStart(3, '0')}.json`;
     result.files[fname] = JSON.stringify({ chunk: i + 1, of: chunks.length, images: chunk });
