@@ -264,7 +264,25 @@ export async function pushCloud() {
 // ============= PULL (lecture publique sans token) =============
 
 function rawUrl(name) {
+  // Cache busting + raw.githubusercontent.com (peut cacher jusqu'à 5 min)
   return `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/${PATH_PREFIX}/${name}?v=${Date.now()}`;
+}
+
+/**
+ * Fetch un fichier du repo via l'API GitHub Contents (toujours FRAIS, pas de cache CDN).
+ * Utilise le token si disponible (raise rate limit), sinon API publique (60 req/h).
+ */
+async function fetchFileViaApi(path) {
+  const cfg = await getCloudConfig();
+  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}?ref=${BRANCH}&v=${Date.now()}`;
+  const headers = { 'Accept': 'application/vnd.github+json' };
+  if (cfg.token) headers['Authorization'] = `Bearer ${cfg.token}`;
+  const res = await fetch(url, { cache: 'no-store', headers });
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!data.content) return null;
+  // base64 → utf-8
+  return decodeURIComponent(escape(atob(data.content.replace(/\n/g, ''))));
 }
 
 /**
@@ -274,15 +292,20 @@ function rawUrl(name) {
 export async function pullCloud({ replace = true } = {}) {
   emit({ status: 'pulling', message: 'Connexion au cloud…' });
 
-  // 1. Fetch le manifest
+  // 1. Fetch le manifest via API GitHub (toujours frais), fallback raw
   let manifest;
   try {
-    const res = await fetch(rawUrl(MANIFEST_FILE), { cache: 'no-store' });
-    if (!res.ok) {
-      emit({ status: 'idle' });
-      return { success: false, empty: true, reason: `manifest ${res.status}` };
+    let manifestStr = await fetchFileViaApi(`${PATH_PREFIX}/${MANIFEST_FILE}`);
+    if (!manifestStr) {
+      // fallback raw avec cache busting
+      const res = await fetch(rawUrl(MANIFEST_FILE), { cache: 'no-store' });
+      if (!res.ok) {
+        emit({ status: 'idle' });
+        return { success: false, empty: true, reason: `manifest ${res.status}` };
+      }
+      manifestStr = await res.text();
     }
-    manifest = await res.json();
+    manifest = JSON.parse(manifestStr);
   } catch (e) {
     emit({ status: 'error', error: 'Lecture manifest échouée: ' + e.message });
     return { success: false, error: e.message };
@@ -352,12 +375,16 @@ export async function setupCloudAutoPull() {
   const cfg = await getCloudConfig();
   const localDirty = await getMeta(META_LOCAL_DIRTY);
 
-  // Tenter la lecture publique du manifest, sans token
-  let manifest;
+  // Tenter d'abord l'API GitHub (TOUJOURS frais), puis fallback raw
+  let manifest, manifestStr;
   try {
-    const res = await fetch(rawUrl(MANIFEST_FILE), { cache: 'no-store' });
-    if (!res.ok) return { skipped: true, reason: `no manifest (${res.status})` };
-    manifest = await res.json();
+    manifestStr = await fetchFileViaApi(`${PATH_PREFIX}/${MANIFEST_FILE}`);
+    if (!manifestStr) {
+      const res = await fetch(rawUrl(MANIFEST_FILE), { cache: 'no-store' });
+      if (!res.ok) return { skipped: true, reason: `no manifest (${res.status})` };
+      manifestStr = await res.text();
+    }
+    manifest = JSON.parse(manifestStr);
   } catch (e) {
     return { skipped: true, reason: 'fetch failed: ' + e.message };
   }

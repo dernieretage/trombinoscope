@@ -151,44 +151,35 @@ const STATE = {
 
   // Cloud public : auto-pull au démarrage si manifest existe en ligne
   // (PRIORITÉ #1 — pas de configuration nécessaire sur les nouveaux appareils)
-  setupCloudAutoPull().then(async (r) => {
-    if (r?.autoPulled && r.profiles > 0) {
-      STATE.profiles = await getAllProfiles();
-      STATE.imagesByProfile.clear();
-      for (const p of STATE.profiles) {
-        const imgs = await getProfileImages(p.id);
-        if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
-      }
-      buildFilterChips();
-      buildProfessionDatalist();
-      render();
-      window.__updateIgBulkCount?.();
-      updateSyncPill();
-      updateSaveButton();
-      toast(`✓ Cloud : ${r.profiles} profils + ${r.images} images chargés depuis le cloud public.`, { type: 'ok', timeout: 5000 });
-    }
-  }).catch((e) => console.warn('[Boot] Cloud auto-pull skipped:', e.message));
+  doCloudPullAndRefresh({ silent: false, source: 'boot' }).catch((e) => console.warn('[Boot] Cloud auto-pull skipped:', e.message));
 
   // Polling toutes les 60s : si quelqu'un push depuis un autre appareil, on récupère
-  setInterval(async () => {
+  setInterval(() => {
     if (document.hidden) return; // ne pas poll si tab inactive
     if (dirtyState) return; // ne pas écraser des modifs locales en attente
-    try {
-      const r = await setupCloudAutoPull();
-      if (r?.autoPulled && r.profiles > 0) {
-        STATE.profiles = await getAllProfiles();
-        STATE.imagesByProfile.clear();
-        for (const p of STATE.profiles) {
-          const imgs = await getProfileImages(p.id);
-          if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
-        }
-        buildFilterChips();
-        render();
-        window.__updateIgBulkCount?.();
-        toast(`↻ Cloud mis à jour : ${r.profiles} profils + ${r.images} images.`, { type: 'ok', timeout: 4000 });
-      }
-    } catch {}
+    doCloudPullAndRefresh({ silent: false, source: 'poll' }).catch(() => {});
   }, 60_000);
+
+  // Pull forcé quand la tab redevient visible (mobile : très important — l'app
+  // peut rester en arrière-plan plusieurs minutes sans polling).
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (dirtyState) return;
+    // Throttle : pas plus d'un pull toutes les 5 secondes
+    const now = Date.now();
+    if (window.__lastVisibilityPull && now - window.__lastVisibilityPull < 5000) return;
+    window.__lastVisibilityPull = now;
+    doCloudPullAndRefresh({ silent: true, source: 'visibility' }).catch(() => {});
+  });
+
+  // Pull au focus de la fenêtre (desktop : alt-tab, etc.)
+  window.addEventListener('focus', () => {
+    if (dirtyState) return;
+    const now = Date.now();
+    if (window.__lastFocusPull && now - window.__lastFocusPull < 5000) return;
+    window.__lastFocusPull = now;
+    doCloudPullAndRefresh({ silent: true, source: 'focus' }).catch(() => {});
+  });
 
   // Si l'URL contient ?activate=xxx, auto-config sync (lien magique)
   consumeActivateParam().then(async (r) => {
@@ -220,6 +211,75 @@ const STATE = {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 })();
+
+// ============= CLOUD PULL HELPER =============
+
+let __cloudPullInFlight = false;
+
+/**
+ * Tente un pull cloud + recharge l'état local + redessine si quelque chose a changé.
+ * @param {Object} opts
+ * @param {boolean} opts.silent - true = pas de toast (sauf changement détecté).
+ * @param {boolean} opts.force - true = force le pull même si déjà fait récemment.
+ * @param {string} opts.source - 'boot' | 'poll' | 'visibility' | 'focus' | 'manual'.
+ */
+async function doCloudPullAndRefresh({ silent = false, force = false, source = 'manual' } = {}) {
+  if (__cloudPullInFlight && !force) return { skipped: true, reason: 'in-flight' };
+  __cloudPullInFlight = true;
+  try {
+    const r = await setupCloudAutoPull();
+    if (r?.autoPulled && r.profiles > 0) {
+      STATE.profiles = await getAllProfiles();
+      STATE.imagesByProfile.clear();
+      for (const p of STATE.profiles) {
+        const imgs = await getProfileImages(p.id);
+        if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
+      }
+      buildFilterChips();
+      buildProfessionDatalist();
+      render();
+      window.__updateIgBulkCount?.();
+      updateSyncPill();
+      updateSaveButton();
+      window.__lastCloudPullAt = Date.now();
+      updateRefreshIndicator();
+      const prefix = source === 'boot' ? '✓ Cloud' : '↻ Cloud mis à jour';
+      toast(`${prefix} : ${r.profiles} profils + ${r.images} images.`, { type: 'ok', timeout: 4000 });
+      return r;
+    }
+    // Pas de changement détecté : juste mettre à jour le timestamp
+    window.__lastCloudPullAt = Date.now();
+    updateRefreshIndicator();
+    if (!silent && source === 'manual') {
+      toast('Cloud à jour — rien à rafraîchir.', { type: 'info', timeout: 2500 });
+    }
+    return r || { skipped: true };
+  } finally {
+    __cloudPullInFlight = false;
+  }
+}
+
+// Met à jour l'indicateur "vu il y a Xs" sur le bouton refresh
+function updateRefreshIndicator() {
+  const btn = document.getElementById('refresh-btn');
+  if (!btn) return;
+  const last = window.__lastCloudPullAt;
+  if (!last) {
+    btn.title = 'Rafraîchir depuis le cloud';
+    btn.removeAttribute('data-fresh-ago');
+    return;
+  }
+  const sec = Math.round((Date.now() - last) / 1000);
+  let label;
+  if (sec < 5) label = 'à l\'instant';
+  else if (sec < 60) label = `il y a ${sec}s`;
+  else if (sec < 3600) label = `il y a ${Math.round(sec / 60)} min`;
+  else label = `il y a ${Math.round(sec / 3600)} h`;
+  btn.title = `Rafraîchir depuis le cloud (vu ${label})`;
+  btn.dataset.freshAgo = label;
+}
+// Rafraîchir l'indicateur toutes les 30s
+setInterval(updateRefreshIndicator, 30_000);
 
 // ============= BUILD UI ELEMENTS =============
 
@@ -515,6 +575,19 @@ function hookUI() {
     toast('Activez le cloud public auto : vos données seront accessibles depuis n\'importe quel appareil.', {
       type: 'info', timeout: 5000,
     });
+  });
+
+  // bouton "↻ Rafraîchir" — pull manuel depuis le cloud
+  $('#refresh-btn')?.addEventListener('click', async () => {
+    const btn = $('#refresh-btn');
+    btn.classList.add('is-spinning');
+    try {
+      await doCloudPullAndRefresh({ silent: false, force: true, source: 'manual' });
+    } catch (e) {
+      toast('Pull cloud échoué : ' + e.message, { type: 'err', timeout: 5000 });
+    } finally {
+      btn.classList.remove('is-spinning');
+    }
   });
 
   // bouton "Scanner photos IG" en évidence — mode rapide par défaut (Dumpor, sans rate-limit)
