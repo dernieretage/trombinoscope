@@ -63,31 +63,55 @@ const STATE = {
   STATE.filters.sort = await getMeta('sort') || 'favoris';
   STATE.filters.profession = await getMeta('profession') || 'all';
 
-  // seed initial si DB vide — on antidate la création pour ne pas marquer "Nouveau"
+  // PRIORITÉ #1 : si DB vide, tenter d'abord le cloud AVANT de seed
+  // (sinon en navigation privée / nouveau device, on flash le seed obsolète
+  // pendant 5-10s, ce qui masque les vraies données).
   let profiles = await getAllProfiles();
-  if (!profiles.length && !(await getMeta('seeded'))) {
-    const past = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const seeded = SEED_PROFILES.map(p => ({
-      id: uid(),
-      name: p.name,
-      professions: p.professions || (p.profession ? [p.profession] : []),
-      instagram: p.instagram,
-      phone: '',
-      email: '',
-      website: '',
-      location: '',
-      rate: '',
-      lastContact: '',
-      bio: '',
-      tags: [],
-      notes: '',
-      status: 'a_contacter',
-      createdAt: past,
-      updatedAt: past,
-    }));
-    await bulkSaveProfiles(seeded);
-    await setMeta('seeded', true);
-    profiles = await getAllProfiles();
+  if (!profiles.length) {
+    // Boot veil: indiquer "Chargement…" pendant l'attente du cloud
+    const bootMark = document.querySelector('.boot__mark');
+    if (bootMark) {
+      bootMark.innerHTML = '<span style="font-size:11px; letter-spacing:.05em">CLOUD…</span>';
+    }
+    let cloudOk = false;
+    try {
+      const r = await Promise.race([
+        setupCloudAutoPull(),
+        new Promise(resolve => setTimeout(() => resolve({ skipped: true, reason: 'timeout 8s' }), 8000)),
+      ]);
+      if (r?.autoPulled && r.profiles > 0) {
+        profiles = await getAllProfiles();
+        cloudOk = true;
+        console.log(`[Boot] Cloud chargé en priorité : ${r.profiles} profils + ${r.images} images`);
+      }
+    } catch (e) {
+      console.warn('[Boot] Cloud pull au démarrage échoué:', e.message);
+    }
+    // Cloud vide ou injoignable → on seed comme fallback
+    if (!cloudOk && !profiles.length && !(await getMeta('seeded'))) {
+      const past = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const seeded = SEED_PROFILES.map(p => ({
+        id: uid(),
+        name: p.name,
+        professions: p.professions || (p.profession ? [p.profession] : []),
+        instagram: p.instagram,
+        phone: '',
+        email: '',
+        website: '',
+        location: '',
+        rate: '',
+        lastContact: '',
+        bio: '',
+        tags: [],
+        notes: '',
+        status: 'a_contacter',
+        createdAt: past,
+        updatedAt: past,
+      }));
+      await bulkSaveProfiles(seeded);
+      await setMeta('seeded', true);
+      profiles = await getAllProfiles();
+    }
   }
   // Migration: profession (string) → professions (array)
   const needsMigration = profiles.some(p => p.profession !== undefined && !p.professions);
@@ -1862,6 +1886,12 @@ function setupSyncListeners() {
     if (btn) {
       btn.classList.remove('is-dirty', 'is-syncing', 'is-error', 'is-saved');
       const label = btn.querySelector('.savebtn__label');
+      // Si aucun token Gist NI cloud configuré → on n'affiche pas d'erreur,
+      // même si une opération échoue. C'est juste un état "pas configuré".
+      const cloudCfg = await getCloudConfig();
+      const syncCfg = await getSyncConfig();
+      const noConfig = !cloudCfg.token && !syncCfg.token;
+
       if (s.status === 'pushing') {
         btn.classList.add('is-syncing');
         if (label) label.textContent = 'Sauvegarde…';
@@ -1869,6 +1899,10 @@ function setupSyncListeners() {
         btn.classList.add('is-syncing');
         if (label) label.textContent = 'Réception…';
       } else if (s.status === 'error') {
+        if (noConfig) {
+          updateSaveButton();
+          return;
+        }
         // Erreur de quota = transitoire, auto-retry → on n'affiche pas "Erreur"
         if (s.error && /Quota GitHub/.test(s.error)) {
           btn.classList.add('is-dirty');
@@ -1973,6 +2007,11 @@ function setupCloudListeners() {
     if (!btn) return;
     btn.classList.remove('is-dirty', 'is-syncing', 'is-error', 'is-saved', 'is-unconfigured');
     const label = btn.querySelector('.savebtn__label');
+    // Pas de token → l'app fait juste de la lecture anonyme. Erreurs = silencieuses.
+    const cloudCfg = await getCloudConfig();
+    const syncCfg = await getSyncConfig();
+    const noConfig = !cloudCfg.token && !syncCfg.token;
+
     if (s.status === 'pushing') {
       btn.classList.add('is-syncing');
       if (label) label.textContent = s.message || 'Push cloud…';
@@ -1980,6 +2019,12 @@ function setupCloudListeners() {
       btn.classList.add('is-syncing');
       if (label) label.textContent = s.message || 'Récupération…';
     } else if (s.status === 'error') {
+      if (noConfig) {
+        // Lecture anonyme qui échoue → on ne dérange pas l'utilisateur,
+        // on retombe sur l'état "non configuré" (gris discret).
+        updateSaveButton();
+        return;
+      }
       // Quota ou erreur réseau temporaire = transitoire, on n'alarme pas
       if (s.error && /Quota GitHub|Réseau injoignable/.test(s.error)) {
         btn.classList.add('is-dirty');
