@@ -672,7 +672,10 @@ body.is-drag-global::after {
 }
 .card__avatar {
   position: absolute; inset: 0;
-  background-size: cover; background-position: center;
+  /* center 30% : favorise le haut de la photo (où sont quasi-toujours les
+     visages) plutôt que le centre géométrique. Évite de couper les têtes
+     sur les portraits IG verticaux quand la card est plus carrée. */
+  background-size: cover; background-position: center 30%;
   background-color: var(--avatar-bg, var(--bg-elev-2));
   background-image: var(--avatar-gradient, none);
   display: grid; place-items: center;
@@ -1580,7 +1583,9 @@ dialog[open] .dialog__inner {
 
   /* Cartes : meilleure lisibilité du nom + métier */
   .card { border-radius: 14px; }
-  .card__cover { aspect-ratio: 1 / 1.15; }
+  /* Aspect-ratio carré sur mobile : moins de crop des photos portrait IG.
+     L'ancien 1:1.15 forçait à couper la moitié des visages. */
+  .card__cover { aspect-ratio: 1 / 1; }
   .card__avatar { font-size: clamp(42px, 14vw, 64px); }
   .card__body { padding: 10px 11px 4px; }
   .card__name { font-size: 15.5px; line-height: 1.25; letter-spacing: -.005em; }
