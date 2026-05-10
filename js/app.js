@@ -3,6 +3,7 @@ import {
   getAllProfiles, saveProfile, deleteProfile, bulkSaveProfiles,
   saveImage, getProfileImages, deleteImage, deleteProfileImages,
   exportAll, importAll, getMeta, setMeta, estimateUsage, uid,
+  cleanupOrphanImages,
 } from './store.js';
 import { SEED_PROFILES, PROFESSIONS, STATUSES } from './seed.js';
 import {
@@ -148,6 +149,10 @@ const STATE = {
   } catch (e) {
     console.warn('Enrichment skipped:', e.message);
   }
+
+  // Nettoyage one-shot des images orphelines (profileId qui n'existe plus
+  // dans la table profiles) — répare les corruptions de chunks anciennes.
+  cleanupOrphanImages().catch(() => {});
 
   // Précharge les premières images de chaque profil pour les vignettes,
   // en parallèle par batches de 25 (évite la latence séquentielle IDB

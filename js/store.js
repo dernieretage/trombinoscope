@@ -48,6 +48,44 @@ function reqToPromise(req) {
 
 // ============= PROFILS =============
 
+/**
+ * Nettoyage one-shot : retire de l'IDB les images dont le profileId
+ * n'existe plus dans la table profiles. Évite de garder des images
+ * orphelines qui peuvent réapparaître à la suite d'un import buggé.
+ * À appeler au boot après chargement initial des profils.
+ */
+export async function cleanupOrphanImages() {
+  try {
+    const profiles = await getAllProfiles();
+    const validIds = new Set(profiles.map(p => p.id).filter(Boolean));
+    const db = await openDB();
+    const t = db.transaction(STORE_IMAGES, 'readwrite');
+    const store = t.objectStore(STORE_IMAGES);
+    let removed = 0;
+    await new Promise((resolve) => {
+      const req = store.openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) {
+          const v = cursor.value;
+          // Pas de profileId OU profileId pas dans les profils → orphelin
+          if (!v.profileId || !validIds.has(v.profileId)) {
+            cursor.delete();
+            removed++;
+          }
+          cursor.continue();
+        } else resolve();
+      };
+      req.onerror = () => resolve();
+    });
+    if (removed > 0) console.warn(`[store] ${removed} images orphelines nettoyées de l'IDB.`);
+    return removed;
+  } catch (e) {
+    console.warn('[store] cleanupOrphanImages erreur:', e.message);
+    return 0;
+  }
+}
+
 export async function getAllProfiles() {
   const store = await tx(STORE_PROFILES);
   return reqToPromise(store.getAll());
@@ -365,7 +403,6 @@ export async function importAllChunked(filesByName, { replace = true, mergeByUpd
       // Charger les profils locaux pour comparer
       const localProfiles = await getAllProfiles();
       const localById = new Map(localProfiles.map(p => [p.id, p]));
-      const remoteIds = new Set(manifest.profiles.map(p => p.id));
       const toSave = [];
       for (const remote of manifest.profiles) {
         const local = localById.get(remote.id);
@@ -379,21 +416,12 @@ export async function importAllChunked(filesByName, { replace = true, mergeByUpd
           } // sinon : local plus récent → on garde local, on push à la prochaine sync
         }
       }
-      // Profils locaux pas dans distant : on les supprime SEULEMENT si replace=true ET
-      // qu'ils ne sont pas ajoutés récemment (ex. créés localement il y a < 24h)
-      if (replace) {
-        const cutoff = Date.now() - 24 * 3600 * 1000;
-        for (const local of localProfiles) {
-          if (!remoteIds.has(local.id)) {
-            const localTs = Date.parse(local.updatedAt) || 0;
-            if (localTs < cutoff) {
-              // Vieux profil local pas dans le cloud → supprimé sur autre device
-              await deleteProfile(local.id).catch(() => {});
-            }
-            // Sinon : profil créé récemment localement, on le garde (sera pushé)
-          }
-        }
-      }
+      // ON NE SUPPRIME PLUS JAMAIS un profil local au pull. C'était la cause
+      // du bug "Pauline a disparu". Si l'user veut vraiment supprimer un profil,
+      // il le fait via l'UI (qui appelle confirmDelete).
+      // Conséquence : si quelqu'un supprime un profil sur device A, device B
+      // le verra réapparaitre au prochain push de B. C'est plus safe que
+      // l'inverse (perte de données silencieuse).
       if (toSave.length) {
         await bulkSaveProfiles(toSave);
       }
@@ -404,6 +432,18 @@ export async function importAllChunked(filesByName, { replace = true, mergeByUpd
     }
   }
 
+  // VALIDATION IMAGES : on retient les profileId valides du manifest pour
+  // ignorer les images orphelines (chunks corrompus d'un push partiel passé).
+  // Évite la cross-contamination de photos entre profils.
+  const validProfileIds = new Set(
+    (manifest.profiles || []).map(p => p.id).filter(Boolean)
+  );
+  // Aussi accepter les profileId locaux non encore pushés
+  try {
+    const allLocal = await getAllProfiles();
+    for (const p of allLocal) if (p.id) validProfileIds.add(p.id);
+  } catch {}
+
   // Helper qui save une liste d'images. Robuste aux quotas IndexedDB
   // (Safari Privée : ~1MB de limite). Sur quota, fallback en mémoire pour
   // que les photos s'affichent quand même (mais perdues à la fermeture).
@@ -412,9 +452,24 @@ export async function importAllChunked(filesByName, { replace = true, mergeByUpd
     let savedCount = 0;
     let memoryFallbackCount = 0;
     let quotaHit = false;
+    let droppedOrphans = 0;
     // Convertir tous les blobs en parallèle (parsing CPU)
     const records = await Promise.all(rawImgs.map(async (img) => {
       try {
+        // ANTI-CONTAMINATION : refuser les images dont le profileId n'est ni
+        // dans le manifest ni dans les profils locaux. Évite les chunks
+        // corrompus d'écrire des photos sur des id orphelins (qui pouvaient
+        // cross-contaminer après merge).
+        if (img.profileId && !validProfileIds.has(img.profileId)) {
+          droppedOrphans++;
+          return null;
+        }
+        // Validation cohérence key === profileId::index
+        if (img.key && img.profileId && img.key !== `${img.profileId}::${img.index}`) {
+          console.warn('[store] image clé incohérente, skip:', img.key);
+          droppedOrphans++;
+          return null;
+        }
         const blob = await base64ToBlob(img.data, img.type);
         return { key: img.key, profileId: img.profileId, index: img.index, blob, type: img.type, size: blob.size, addedAt: Date.now() };
       } catch (e) {
@@ -422,6 +477,7 @@ export async function importAllChunked(filesByName, { replace = true, mergeByUpd
         return null;
       }
     }));
+    if (droppedOrphans) console.warn(`[store] ${droppedOrphans} images orphelines/incohérentes ignorées (anti-contamination).`);
     const validRecords = records.filter(Boolean);
     if (!validRecords.length) return 0;
 
