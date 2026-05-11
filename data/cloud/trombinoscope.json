@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "exportedAt": "2026-05-11T10:54:06.790Z",
+  "exportedAt": "2026-05-11T10:55:10.758Z",
   "profiles": [
     {
       "id": "p_06097g8rrmoyydw0y",
@@ -366,6 +366,7 @@
     {
       "id": "p_9eoiogv1qmp133dhk",
       "name": "Vincent Magnaud",
+      "profession": "Assistant réalisateur",
       "instagram": "by_vehem",
       "phone": "",
       "email": "",
@@ -375,13 +376,14 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-11T10:53:50.984Z",
-      "updatedAt": "2026-05-11T10:54:04.147Z",
+      "updatedAt": "2026-05-11T10:54:58.704Z",
       "professions": [
         "Assistant réalisateur"
       ],
       "rate": "",
       "agency": "",
-      "lastContact": ""
+      "lastContact": "",
+      "bio": "Highlights updated 🔋"
     },
     {
       "id": "p_9kfipvnwomoyydw0y",
@@ -1434,7 +1436,7 @@
       "tags": [],
       "notes": "",
       "createdAt": "2026-05-11T10:41:59.271Z",
-      "updatedAt": "2026-05-11T10:41:59.271Z"
+      "updatedAt": "2026-05-11T10:54:18.941Z"
     },
     {
       "id": "p_z429l02fumoyydw0y",
@@ -1512,6 +1514,6 @@
       "agency": "KO Collective"
     }
   ],
-  "imageChunks": 22,
-  "totalImages": 70
+  "imageChunks": 23,
+  "totalImages": 72
 }
