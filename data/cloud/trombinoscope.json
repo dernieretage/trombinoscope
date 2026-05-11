@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "exportedAt": "2026-05-11T11:24:49.245Z",
+  "exportedAt": "2026-05-11T11:59:48.780Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -15,7 +15,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-11T11:13:06.541Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "professions": [
         "Assistant réalisateur"
       ],
@@ -44,7 +44,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": ""
     },
     {
@@ -72,7 +72,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_0n97bsjqlmoyydw0y",
@@ -97,7 +97,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "All About Group"
     },
     {
@@ -125,7 +125,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:24:46.062Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "WÜL Collective"
     },
     {
@@ -153,7 +153,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_2rfqzebjqmoyydw0y",
@@ -180,7 +180,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_2xwbtuzaump13s54e",
@@ -194,7 +194,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-11T11:13:06.541Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "professions": [
         "Assistant réalisateur"
       ],
@@ -225,7 +225,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "file.ccn (collectif)"
     },
     {
@@ -241,7 +241,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-11T11:13:06.541Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "professions": [
         "Assistant réalisateur"
       ],
@@ -272,7 +272,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_4aa0y7bzdmoyydw0y",
@@ -299,7 +299,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "HENRY"
     },
     {
@@ -327,7 +327,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_6myngkuqgmoyydw0y",
@@ -353,7 +353,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_6t30x95dpmoyydw0y",
@@ -373,7 +373,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_7dq3cb7yzmoyydw0y",
@@ -398,7 +398,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "Ford Models"
     },
     {
@@ -424,7 +424,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_9eoiogv1qmp133dhk",
@@ -438,7 +438,7 @@
       "notes": "",
       "status": "",
       "createdAt": "2026-05-11T10:53:50.984Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "professions": [
         "Assistant réalisateur"
       ],
@@ -469,7 +469,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "Hiersoir"
     },
     {
@@ -484,7 +484,7 @@
       "notes": "",
       "status": "",
       "createdAt": "2026-05-10T13:54:26.350Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "professions": [
         "Assistant réalisateur"
       ],
@@ -515,7 +515,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_aab07t3gbmp03vq7p",
@@ -535,7 +535,7 @@
       "tags": [],
       "notes": "",
       "createdAt": "2026-05-10T18:28:07.669Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_acmuc2jn5moyydw0y",
@@ -562,7 +562,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "Trouble Management"
     },
     {
@@ -590,7 +590,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_bszc8e3vpmoyydw0y",
@@ -615,7 +615,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_buujxmjolmoyydw0y",
@@ -639,7 +639,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_c3gjh1pdzmoyydw0y",
@@ -663,7 +663,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_cjjh8x7usmoyydw0y",
@@ -689,7 +689,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_ctbpd2o0umoyydw0y",
@@ -717,7 +717,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_djahu5zjpmoyydw0y",
@@ -743,7 +743,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "WM Management (Milan)"
     },
     {
@@ -772,7 +772,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_gndko1inkmoyydw0y",
@@ -798,7 +798,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "Sticks & Stones Agency"
     },
     {
@@ -825,7 +825,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_jphs3bj0kmoyydw0y",
@@ -852,7 +852,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_kqdkq39l8moyydw0y",
@@ -879,7 +879,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_lr4b4memkmoyydw0y",
@@ -905,7 +905,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "L'Avant-Courrier"
     },
     {
@@ -931,7 +931,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_m0iup9gdimoyydw0y",
@@ -957,7 +957,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_n123i07ylmoyydw0y",
@@ -981,7 +981,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_nmg2p7k7umoyydw0y",
@@ -1009,7 +1009,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "VMA (Voyez Mon Agent)"
     },
     {
@@ -1036,7 +1036,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_nvt5oqx59moyydw0y",
@@ -1061,7 +1061,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_ojpynp7i0moyydw0y",
@@ -1088,7 +1088,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "Academy Films (London)"
     },
     {
@@ -1114,7 +1114,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": ""
     },
     {
@@ -1139,7 +1139,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "MAAD Films"
     },
     {
@@ -1169,7 +1169,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "Soixante Quinze (75 Production, Paris)"
     },
     {
@@ -1192,7 +1192,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_s0yvjp1wtmoyydw0y",
@@ -1219,7 +1219,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "SCHIERKE.HOTTAS Artist Management"
     },
     {
@@ -1246,7 +1246,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_teov01itlmoyydw0y",
@@ -1273,7 +1273,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "Nakama"
     },
     {
@@ -1300,7 +1300,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "Lambert | Lambert"
     },
     {
@@ -1324,7 +1324,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_v1wgyy1d6moyydw0y",
@@ -1351,7 +1351,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "Heroes Models / Oui Management (mannequinat)"
     },
     {
@@ -1378,7 +1378,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "Galerie pal project / Galerie Eric Mouchet"
     },
     {
@@ -1399,7 +1399,7 @@
       "tags": [],
       "notes": "",
       "createdAt": "2026-05-11T10:41:08.577Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_wxcfr1h45moyydw0y",
@@ -1422,7 +1422,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_yhb7pq0dhmoyydw0y",
@@ -1450,7 +1450,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "CAMUS CREATIVES / ODBR (fondateur)"
     },
     {
@@ -1477,7 +1477,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "Birth Image"
     },
     {
@@ -1498,7 +1498,7 @@
       "tags": [],
       "notes": "",
       "createdAt": "2026-05-11T10:41:59.271Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_z429l02fumoyydw0y",
@@ -1525,7 +1525,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_z9tguywexmp10sdi5",
@@ -1545,7 +1545,7 @@
       "tags": [],
       "notes": "",
       "createdAt": "2026-05-11T09:49:18.557Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z"
+      "updatedAt": "2026-05-11T11:52:12.348Z"
     },
     {
       "id": "p_zxj898id9moyydw0y",
@@ -1572,10 +1572,10 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-11T11:19:50.780Z",
+      "updatedAt": "2026-05-11T11:52:12.348Z",
       "agency": "KO Collective"
     }
   ],
   "imageChunks": 25,
-  "totalImages": 89
+  "totalImages": 80
 }
