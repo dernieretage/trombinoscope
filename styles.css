@@ -1533,10 +1533,23 @@ dialog[open] .dialog__inner {
    RESPONSIVE
    ============================================================ */
 @media (max-width: 880px) {
-  .topbar__inner { grid-template-columns: auto 1fr auto; gap: 8px; padding: 10px 14px; }
-  .brand__name { display: none; }
-  .search { height: 38px; max-width: 100%; }
+  /* La search bar passe en DESSOUS du topbar pour ne plus se battre pour
+     l'espace avec brand + boutons. Layout : ligne 1 = brand + actions ;
+     ligne 2 = search (pleine largeur). */
+  .topbar__inner {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      "brand actions"
+      "search search";
+    gap: 8px 6px;
+    padding: 8px 12px;
+  }
+  .brand { grid-area: brand; }
+  .topbar__actions { grid-area: actions; justify-self: end; }
+  .search { grid-area: search; max-width: 100%; height: 36px; }
   .search input { font-size: 14px; }
+  .brand__name { display: none; }
   .filterbar__inner { grid-template-columns: 1fr; gap: 8px; }
   /* Les chips profession ET status partagent maintenant la même rangée scrollable
      pour éviter qu'elles occupent 2 lignes verticales sur petit écran. */
