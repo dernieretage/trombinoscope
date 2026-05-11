@@ -258,9 +258,18 @@ const STATE = {
     updateSyncPill();
     updateSaveButton();
   }).catch(() => {});
-  // PWA
+  // PWA — enregistre le SW et reload auto quand une nouvelle version active
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
+    // Quand le SW actif change (nouveau deployé), force un reload pour récupérer
+    // les nouveaux CSS/JS. Évite que l'user reste sur l'ancien code après deploy.
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      // Petit délai pour laisser les modifs en cours se terminer
+      setTimeout(() => window.location.reload(), 500);
+    });
   }
 
   // Banner d'onboarding : si cet appareil n'a pas de token cloud mais le cloud
