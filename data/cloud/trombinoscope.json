@@ -1,10 +1,11 @@
 {
   "version": 2,
-  "exportedAt": "2026-05-11T11:15:37.144Z",
+  "exportedAt": "2026-05-11T11:17:22.957Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
       "name": "Juliette Barbier",
+      "profession": "Assistant réalisateur",
       "instagram": "barbier_juliette",
       "phone": "",
       "email": "",
@@ -14,13 +15,14 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-11T11:13:06.541Z",
-      "updatedAt": "2026-05-11T11:14:10.050Z",
+      "updatedAt": "2026-05-11T11:15:58.936Z",
       "professions": [
         "Assistant réalisateur"
       ],
       "rate": "",
       "agency": "",
-      "lastContact": ""
+      "lastContact": "",
+      "bio": "1ère assistante mise en scène"
     },
     {
       "id": "p_06097g8rrmoyydw0y",
@@ -229,6 +231,7 @@
     {
       "id": "p_3b4poyi1xmp13s54e",
       "name": "Raphaël Muckensturm",
+      "profession": "Assistant réalisateur",
       "instagram": "rp300k",
       "phone": "",
       "email": "",
@@ -238,7 +241,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-11T11:13:06.541Z",
-      "updatedAt": "2026-05-11T11:13:45.531Z",
+      "updatedAt": "2026-05-11T11:16:07.790Z",
       "professions": [
         "Assistant réalisateur"
       ],
@@ -1573,6 +1576,6 @@
       "agency": "KO Collective"
     }
   ],
-  "imageChunks": 24,
-  "totalImages": 78
+  "imageChunks": 25,
+  "totalImages": 80
 }
