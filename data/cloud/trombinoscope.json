@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "exportedAt": "2026-05-11T12:01:05.649Z",
+  "exportedAt": "2026-05-11T12:02:23.610Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -439,7 +439,7 @@
       "notes": "",
       "status": "",
       "createdAt": "2026-05-11T10:53:50.984Z",
-      "updatedAt": "2026-05-11T11:52:12.348Z",
+      "updatedAt": "2026-05-11T12:01:22.295Z",
       "professions": [
         "Assistant réalisateur"
       ],
@@ -1578,5 +1578,5 @@
     }
   ],
   "imageChunks": 25,
-  "totalImages": 81
+  "totalImages": 84
 }
