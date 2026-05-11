@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "exportedAt": "2026-05-11T10:41:11.264Z",
+  "exportedAt": "2026-05-11T10:42:18.485Z",
   "profiles": [
     {
       "id": "p_06097g8rrmoyydw0y",
@@ -1395,6 +1395,26 @@
       "createdAt": "2026-05-02T23:06:31.138Z",
       "updatedAt": "2026-05-11T10:16:51.315Z",
       "agency": "Birth Image"
+    },
+    {
+      "id": "p_ymse2y0otmp12o4br",
+      "name": "Mathieu Perez",
+      "professions": [
+        "Assistant réalisateur"
+      ],
+      "status": "",
+      "instagram": "matj0p",
+      "phone": "+33 6 95 01 58 95",
+      "email": "",
+      "website": "",
+      "location": "",
+      "rate": "",
+      "agency": "",
+      "lastContact": "",
+      "tags": [],
+      "notes": "",
+      "createdAt": "2026-05-11T10:41:59.271Z",
+      "updatedAt": "2026-05-11T10:41:59.271Z"
     },
     {
       "id": "p_z429l02fumoyydw0y",
