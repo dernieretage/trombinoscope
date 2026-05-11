@@ -1,11 +1,10 @@
 {
   "version": 2,
-  "exportedAt": "2026-05-11T11:13:48.208Z",
+  "exportedAt": "2026-05-11T11:15:37.144Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
-      "name": "Barbier Juliette",
-      "profession": "Assistant réalisateur",
+      "name": "Juliette Barbier",
       "instagram": "barbier_juliette",
       "phone": "",
       "email": "",
@@ -15,7 +14,13 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-11T11:13:06.541Z",
-      "updatedAt": "2026-05-11T11:13:06.543Z"
+      "updatedAt": "2026-05-11T11:14:10.050Z",
+      "professions": [
+        "Assistant réalisateur"
+      ],
+      "rate": "",
+      "agency": "",
+      "lastContact": ""
     },
     {
       "id": "p_06097g8rrmoyydw0y",
@@ -177,8 +182,7 @@
     },
     {
       "id": "p_2xwbtuzaump13s54e",
-      "name": "By Vehem",
-      "profession": "Assistant réalisateur",
+      "name": "Vincent Magnaud",
       "instagram": "by_vehem",
       "phone": "",
       "email": "",
@@ -188,7 +192,13 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-11T11:13:06.541Z",
-      "updatedAt": "2026-05-11T11:13:06.543Z"
+      "updatedAt": "2026-05-11T11:14:36.642Z",
+      "professions": [
+        "Assistant réalisateur"
+      ],
+      "rate": "",
+      "agency": "",
+      "lastContact": ""
     },
     {
       "id": "p_350uein1mmoyydw0y",
