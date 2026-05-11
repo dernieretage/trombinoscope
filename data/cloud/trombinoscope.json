@@ -1,7 +1,22 @@
 {
   "version": 2,
-  "exportedAt": "2026-05-11T11:08:18.657Z",
+  "exportedAt": "2026-05-11T11:13:48.208Z",
   "profiles": [
+    {
+      "id": "p_04mapj63pmp13s54e",
+      "name": "Barbier Juliette",
+      "profession": "Assistant réalisateur",
+      "instagram": "barbier_juliette",
+      "phone": "",
+      "email": "",
+      "website": "",
+      "location": "",
+      "tags": [],
+      "notes": "",
+      "status": "a_contacter",
+      "createdAt": "2026-05-11T11:13:06.541Z",
+      "updatedAt": "2026-05-11T11:13:06.543Z"
+    },
     {
       "id": "p_06097g8rrmoyydw0y",
       "name": "Houssem",
@@ -161,6 +176,21 @@
       "updatedAt": "2026-05-11T11:00:37.415Z"
     },
     {
+      "id": "p_2xwbtuzaump13s54e",
+      "name": "By Vehem",
+      "profession": "Assistant réalisateur",
+      "instagram": "by_vehem",
+      "phone": "",
+      "email": "",
+      "website": "",
+      "location": "",
+      "tags": [],
+      "notes": "",
+      "status": "a_contacter",
+      "createdAt": "2026-05-11T11:13:06.541Z",
+      "updatedAt": "2026-05-11T11:13:06.543Z"
+    },
+    {
       "id": "p_350uein1mmoyydw0y",
       "name": "Mizh U",
       "professions": [
@@ -185,6 +215,26 @@
       "createdAt": "2026-05-02T23:06:31.138Z",
       "updatedAt": "2026-05-11T11:00:37.415Z",
       "agency": "file.ccn (collectif)"
+    },
+    {
+      "id": "p_3b4poyi1xmp13s54e",
+      "name": "Raphaël Muckensturm",
+      "instagram": "rp300k",
+      "phone": "",
+      "email": "",
+      "website": "",
+      "location": "",
+      "tags": [],
+      "notes": "",
+      "status": "a_contacter",
+      "createdAt": "2026-05-11T11:13:06.541Z",
+      "updatedAt": "2026-05-11T11:13:45.531Z",
+      "professions": [
+        "Assistant réalisateur"
+      ],
+      "rate": "",
+      "agency": "",
+      "lastContact": ""
     },
     {
       "id": "p_4996ufr97moyydw0y",
