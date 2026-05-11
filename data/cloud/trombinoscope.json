@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "exportedAt": "2026-05-11T11:59:48.780Z",
+  "exportedAt": "2026-05-11T12:01:05.649Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -194,13 +194,14 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-11T11:13:06.541Z",
-      "updatedAt": "2026-05-11T11:52:12.348Z",
+      "updatedAt": "2026-05-11T12:00:59.589Z",
       "professions": [
         "Assistant réalisateur"
       ],
       "rate": "",
       "agency": "",
-      "lastContact": ""
+      "lastContact": "",
+      "bio": "Highlights updated 🔋"
     },
     {
       "id": "p_350uein1mmoyydw0y",
@@ -1577,5 +1578,5 @@
     }
   ],
   "imageChunks": 25,
-  "totalImages": 80
+  "totalImages": 81
 }
