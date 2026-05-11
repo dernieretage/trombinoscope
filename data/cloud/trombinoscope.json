@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "exportedAt": "2026-05-11T10:42:18.485Z",
+  "exportedAt": "2026-05-11T10:54:06.790Z",
   "profiles": [
     {
       "id": "p_06097g8rrmoyydw0y",
@@ -362,6 +362,26 @@
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
       "updatedAt": "2026-05-11T10:16:51.315Z"
+    },
+    {
+      "id": "p_9eoiogv1qmp133dhk",
+      "name": "Vincent Magnaud",
+      "instagram": "by_vehem",
+      "phone": "",
+      "email": "",
+      "website": "",
+      "location": "",
+      "tags": [],
+      "notes": "",
+      "status": "a_contacter",
+      "createdAt": "2026-05-11T10:53:50.984Z",
+      "updatedAt": "2026-05-11T10:54:04.147Z",
+      "professions": [
+        "Assistant réalisateur"
+      ],
+      "rate": "",
+      "agency": "",
+      "lastContact": ""
     },
     {
       "id": "p_9kfipvnwomoyydw0y",
