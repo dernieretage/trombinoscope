@@ -1535,7 +1535,11 @@ dialog[open] .dialog__inner {
 @media (max-width: 880px) {
   .topbar__inner { grid-template-columns: auto 1fr auto; gap: 8px; padding: 10px 14px; }
   .brand__name { display: none; }
+  .search { height: 38px; max-width: 100%; }
+  .search input { font-size: 14px; }
   .filterbar__inner { grid-template-columns: 1fr; gap: 8px; }
+  /* Les chips profession ET status partagent maintenant la même rangée scrollable
+     pour éviter qu'elles occupent 2 lignes verticales sur petit écran. */
   .filterbar__right {
     display: flex;
     flex-wrap: nowrap;
@@ -1547,6 +1551,13 @@ dialog[open] .dialog__inner {
     -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
   }
   .filterbar__right::-webkit-scrollbar { display: none; }
+  .chips, #profession-chips {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .chips::-webkit-scrollbar, #profession-chips::-webkit-scrollbar { display: none; }
   .status-filters { flex-wrap: nowrap; flex: none; }
   .status-pill { flex: none; }
   .select { flex: none; }
@@ -1554,8 +1565,11 @@ dialog[open] .dialog__inner {
   .grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
   .editform__grid { grid-template-columns: 1fr; }
   .cta span { display: none; }
-  .cta { padding: 0 12px; width: 44px; justify-content: center; }
+  .cta { padding: 0 12px; width: 40px; height: 38px; justify-content: center; }
   .cta svg { width: 18px; height: 18px; }
+  .savebtn { height: 38px; padding: 0 10px; }
+  .igbulkbtn { height: 36px; padding: 0 10px; }
+  .iconbtn { width: 38px; height: 38px; }
   .statbar__inner { gap: 18px; }
   .stat__num { font-size: 20px; }
   .stat--right { width: 100%; margin-left: 0; }
