@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "exportedAt": "2026-05-11T19:58:35.417Z",
+  "exportedAt": "2026-05-11T20:00:23.093Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -567,7 +567,7 @@
     },
     {
       "id": "p_aujzz5iwimp1krqok",
-      "name": "Hlebaillif",
+      "name": "Hugo Lebaillif",
       "instagram": "hlebaillif",
       "phone": "",
       "email": "",
@@ -577,10 +577,13 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-11T19:08:41.300Z",
-      "updatedAt": "2026-05-11T19:58:27.245Z",
+      "updatedAt": "2026-05-11T19:59:58.443Z",
       "professions": [
         "Assistant réalisateur"
-      ]
+      ],
+      "rate": "",
+      "agency": "",
+      "lastContact": ""
     },
     {
       "id": "p_bbhrl1w5pmoyydw0y",
