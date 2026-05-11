@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "exportedAt": "2026-05-11T11:04:03.245Z",
+  "exportedAt": "2026-05-11T11:08:18.657Z",
   "profiles": [
     {
       "id": "p_06097g8rrmoyydw0y",
@@ -365,9 +365,9 @@
     },
     {
       "id": "p_9eoiogv1qmp133dhk",
-      "name": "Jules DORMOY",
+      "name": "Jules Dormoy",
       "instagram": "serge_scarface_revival",
-      "phone": "+33 6 26 56 85 29",
+      "phone": "",
       "email": "",
       "website": "",
       "location": "",
@@ -375,7 +375,7 @@
       "notes": "",
       "status": "",
       "createdAt": "2026-05-11T10:53:50.984Z",
-      "updatedAt": "2026-05-11T11:04:00.624Z",
+      "updatedAt": "2026-05-11T11:07:57.944Z",
       "professions": [
         "Assistant réalisateur"
       ],
@@ -1514,5 +1514,5 @@
     }
   ],
   "imageChunks": 24,
-  "totalImages": 80
+  "totalImages": 78
 }
