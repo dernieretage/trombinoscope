@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "exportedAt": "2026-05-12T08:19:54.749Z",
+  "exportedAt": "2026-05-12T08:23:23.948Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -848,6 +848,27 @@
       "updatedAt": "2026-05-12T08:19:45.314Z"
     },
     {
+      "id": "p_j7vc21eh1mp2d28vg",
+      "name": "David Levi",
+      "professions": [
+        "Assistant réalisateur"
+      ],
+      "status": "",
+      "instagram": "davidelielevi",
+      "phone": "",
+      "email": "",
+      "website": "",
+      "location": "",
+      "rate": "",
+      "agency": "",
+      "lastContact": "",
+      "tags": [],
+      "notes": "",
+      "createdAt": "2026-05-12T08:20:40.684Z",
+      "updatedAt": "2026-05-12T08:21:44.818Z",
+      "bio": "671 Followers, 1,087 Following, 10 Posts - See Instagram photos and videos from David Levi (@davidelielevi)"
+    },
+    {
       "id": "p_jphs3bj0kmoyydw0y",
       "name": "Agathe Auriffeille",
       "professions": [
@@ -892,7 +913,7 @@
       "tags": [],
       "notes": "",
       "createdAt": "2026-05-12T08:19:52.088Z",
-      "updatedAt": "2026-05-12T08:19:52.088Z"
+      "updatedAt": "2026-05-12T08:22:07.269Z"
     },
     {
       "id": "p_kqdkq39l8moyydw0y",
@@ -1616,6 +1637,6 @@
       "agency": "KO Collective"
     }
   ],
-  "imageChunks": 25,
-  "totalImages": 85
+  "imageChunks": 26,
+  "totalImages": 87
 }
