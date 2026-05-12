@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "exportedAt": "2026-05-12T16:21:31.486Z",
+  "exportedAt": "2026-05-12T16:22:28.164Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -1202,6 +1202,26 @@
       "createdAt": "2026-05-02T23:06:31.138Z",
       "updatedAt": "2026-05-12T15:12:00.382Z",
       "agency": "MAAD Films"
+    },
+    {
+      "id": "p_qrj9xybxbmp2u9ry5",
+      "name": "Forest Bru",
+      "professions": [
+        "Photographe"
+      ],
+      "status": "",
+      "instagram": "forest_bru",
+      "phone": "",
+      "email": "",
+      "website": "",
+      "location": "",
+      "rate": "",
+      "agency": "",
+      "lastContact": "",
+      "tags": [],
+      "notes": "",
+      "createdAt": "2026-05-12T16:22:25.469Z",
+      "updatedAt": "2026-05-12T16:22:25.469Z"
     },
     {
       "id": "p_rm2c435lxmoyydw0y",
