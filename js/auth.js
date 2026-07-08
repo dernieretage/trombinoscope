@@ -42,11 +42,18 @@ export async function tryUnlock(password) {
   }
 }
 
+// Le déverrouillage exige que le mot de passe ait été RÉELLEMENT saisi sur cet
+// appareil (flag dédié), pas seulement qu'un vieux token traîne dans l'IDB
+// (les appareils configurés à l'ancienne avaient des tokens hérités, parfois
+// périmés/sans droit d'écriture → la porte les remplace par le bon).
+const AUTH_FLAG = 'auth_ok_v1';
+
 export async function isUnlocked() {
-  return !!(await getMeta('cloud_repo_token'));
+  return !!(await getMeta(AUTH_FLAG)) && !!(await getMeta('cloud_repo_token'));
 }
 
 export async function lock() {
+  await setMeta(AUTH_FLAG, null);
   await setMeta('cloud_repo_token', null);
 }
 
@@ -90,8 +97,11 @@ export async function ensureAuthGate({ onUnlocked } = {}) {
       btn.textContent = 'Vérification…';
       const token = await tryUnlock(input.value);
       if (token) {
+        // Écrase tout ancien token hérité (potentiellement périmé/sans droit
+        // d'écriture) par celui du coffre, et marque l'appareil autorisé.
         await setMeta('cloud_repo_token', token);
         await setMeta('cloud_auto', true);
+        await setMeta(AUTH_FLAG, true);
         overlay.classList.add('authgate--out');
         setTimeout(() => overlay.remove(), 350);
         try { onUnlocked?.(); } catch {}
