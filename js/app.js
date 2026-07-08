@@ -272,7 +272,13 @@ const STATE = {
   // réécrit STATE.profiles + re-render → modifs en cours perdues, callbacks
   // coupés). On bloque pour TOUT dialog ouvert (édition, fiche, IA, réglages…).
   function canPullSafely() {
-    if (dirtyState) return false;
+    // On NE bloque QUE sur une modale ouverte (édition en cours → re-render
+    // couperait les callbacks). On ne bloque PLUS sur dirtyState : le pull est
+    // un MERGE non destructif (le plus récent gagne ; nos modifs locales sont
+    // persistées dans IndexedDB et réécrites à l'identique), donc rafraîchir
+    // même avec des modifs locales en attente est SÛR — et c'est indispensable :
+    // sinon un appareil aux modifs non-pushées ne voyait JAMAIS les changements
+    // des autres (« ne s'actualise pas du tout »).
     if (document.querySelector('dialog[open]')) return false;
     return true;
   }
@@ -869,8 +875,15 @@ function hookUI() {
         } else {
           toast('✓ Tout est déjà synchronisé.', { type: 'ok', timeout: 3000 });
         }
-        // Recharger l'affichage (le pull a pu ramener des modifs distantes)
+        // Recharger l'affichage (le pull a pu ramener des modifs distantes :
+        // profils renommés ET nouvelles photos → on recharge les deux).
         STATE.profiles = await getAllProfiles();
+        STATE.imagesByProfile.clear();
+        for (const p of STATE.profiles) {
+          const imgs = await getProfileImages(p.id);
+          if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
+        }
+        buildFilterChips();
         render();
       } catch (e) {
         if (e.code === 'QUOTA' || /Quota GitHub/.test(e.message)) {
@@ -2432,7 +2445,8 @@ function hookSettingsDialog() {
       out.className = 'settings__small ok';
       await setCloudToken(token);
       try {
-        const r = await pushCloud();
+        const s = await syncCloud({ reason: 'save-button' });
+        const r = s.push || { profiles: 0, images: 0, chunks: 0, sizeKb: 0 };
         out.textContent = `✓ Cloud activé : ${r.profiles} profils + ${r.images} images (${r.chunks} fichiers, ${r.sizeKb} Ko). Tout autre appareil verra ces données automatiquement.`;
       } catch (pushErr) {
         out.textContent = `⚠ Cloud activé mais push initial échoué : ${pushErr.message}`;
@@ -2473,10 +2487,13 @@ function hookSettingsDialog() {
   });
   $('#cloud-push-btn').addEventListener('click', async () => {
     try {
-      const r = await pushCloud();
-      toast(`✓ ${r.profiles} profils + ${r.images} images poussés vers le cloud (${r.sizeKb} Ko).`, { type: 'ok', timeout: 5000 });
+      const r = await syncCloud({ reason: 'save-button' });
+      const p = r.push;
+      toast(p ? `✓ ${p.profiles} profils + ${p.images} images synchronisés (${p.sizeKb} Ko).` : '✓ Déjà à jour.', { type: 'ok', timeout: 5000 });
+      STATE.profiles = await getAllProfiles();
+      render();
       refreshSettingsView();
-    } catch (e) { toast('Push cloud échoué : ' + e.message, { type: 'err' }); }
+    } catch (e) { toast('Sync cloud échouée : ' + e.message, { type: 'err' }); }
   });
   $('#cloud-invite-btn').addEventListener('click', async () => {
     try {
