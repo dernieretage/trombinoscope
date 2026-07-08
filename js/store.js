@@ -106,6 +106,9 @@ export async function saveProfile(profile) {
 }
 
 export async function deleteProfile(id) {
+  // Tombstone AVANT tout : la suppression doit se propager aux autres devices
+  // même si la suite échoue à mi-chemin.
+  await addTombstone(id).catch(() => {});
   // Récupérer les keys d'images pour révoquer les objectURL avant suppression
   const imgs = await getProfileImages(id).catch(() => []);
   const store = await tx(STORE_PROFILES, 'readwrite');
@@ -262,6 +265,52 @@ export async function setMeta(key, value) {
   return reqToPromise(store.put({ key, value }));
 }
 
+/**
+ * Vide entièrement les profils ET les images (sans toucher aux préférences/meta).
+ * Utilisé par la migration one-shot de dédoublonnage. Ne crée PAS de tombstones
+ * (ce n'est pas une suppression volontaire de profils, juste une réadoption cloud).
+ */
+export async function clearAllProfilesAndImages() {
+  const db = await openDB();
+  const t = db.transaction([STORE_PROFILES, STORE_IMAGES], 'readwrite');
+  t.objectStore(STORE_PROFILES).clear();
+  t.objectStore(STORE_IMAGES).clear();
+  await new Promise((resolve, reject) => {
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error || new Error('clear abort'));
+  });
+  try {
+    const u = await import('./utils.js');
+    u.clearObjectURLs?.();
+  } catch {}
+}
+
+// ============= TOMBSTONES (propagation des suppressions) =============
+// Quand un profil est supprimé, on garde une trace {id, deletedAt} qui voyage
+// dans le manifest cloud. Sans ça, un device qui a encore le profil le
+// "ressusciterait" à son prochain push (les push sont des snapshots complets).
+
+const TOMBSTONE_TTL_MS = 60 * 24 * 3600 * 1000; // 60 jours puis purge
+
+export async function getTombstones() {
+  const list = (await getMeta('tombstones')) || [];
+  return Array.isArray(list) ? list : [];
+}
+
+export async function addTombstone(id) {
+  const list = await getTombstones();
+  const now = new Date().toISOString();
+  const filtered = list.filter(t => t.id !== id);
+  filtered.push({ id, deletedAt: now });
+  await setMeta('tombstones', pruneTombstones(filtered));
+}
+
+export function pruneTombstones(list) {
+  const cutoff = Date.now() - TOMBSTONE_TTL_MS;
+  return (list || []).filter(t => (Date.parse(t.deletedAt) || 0) > cutoff);
+}
+
 // ============= EXPORT / IMPORT JSON =============
 
 // Export "single file" (legacy) — utilisé pour download local et backward compat
@@ -325,10 +374,12 @@ export async function exportAllChunked({ chunkBytes = 600_000 } = {}) {
   if (current.length) chunks.push(current);
 
   // Manifest principal (metadata + profils, pas d'images)
+  const tombstones = pruneTombstones(await getTombstones());
   const manifest = {
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     profiles,
+    tombstones,
     imageChunks: chunks.length,
     totalImages: allImages.length,
   };
@@ -375,17 +426,12 @@ export async function importAllChunked(filesByName, { replace = true, mergeByUpd
   if (!manifestStr) throw new Error('trombinoscope.json manquant');
   const manifest = JSON.parse(manifestStr);
   let totalProfiles = 0, totalImages = 0;
+  // Stats de convergence : si le local a des données plus récentes ou des
+  // profils que le distant n'a pas, l'appelant DOIT re-pusher (sinon ces
+  // données n'atteindront jamais les autres appareils).
+  const stats = { localNewer: 0, localOnly: 0, remoteApplied: 0, deletedByTombstone: 0 };
 
-  // MERGE STRATEGY (par défaut, plus safe) :
-  // - Pour chaque profil distant, on compare updatedAt avec le local
-  //   et on garde le PLUS RÉCENT (last-write-wins par profil, pas par push).
-  // - Pour les profils LOCAUX qui n'existent pas en distant : on les GARDE
-  //   (peut-être ajoutés localement, pas encore pushés).
-  // - Pour les images : on N'EFFACE PLUS le STORE_IMAGES local. On ajoute
-  //   les images du distant. Les images locales pour profils encore présents
-  //   sont conservées (utile en nav privée + rescan IG manuel).
-  // L'ancien comportement `replace=true` est conservé pour le cas explicite
-  // (import manuel "Remplacer tout").
+  // Mode destructif explicite (import manuel "Remplacer tout") uniquement.
   if (replace && !mergeByUpdatedAt) {
     const db = await openDB();
     const t = db.transaction([STORE_PROFILES, STORE_IMAGES], 'readwrite');
@@ -398,38 +444,96 @@ export async function importAllChunked(filesByName, { replace = true, mergeByUpd
     });
   }
 
-  if (manifest.profiles?.length) {
-    if (mergeByUpdatedAt) {
-      // Charger les profils locaux pour comparer
-      const localProfiles = await getAllProfiles();
-      const localById = new Map(localProfiles.map(p => [p.id, p]));
-      const toSave = [];
-      for (const remote of manifest.profiles) {
-        const local = localById.get(remote.id);
-        if (!local) {
-          toSave.push(remote); // nouveau profil distant
-        } else {
-          const remoteTs = Date.parse(remote.updatedAt) || 0;
-          const localTs = Date.parse(local.updatedAt) || 0;
-          if (remoteTs > localTs) {
-            toSave.push(remote); // distant plus récent → adopte
-          } // sinon : local plus récent → on garde local, on push à la prochaine sync
+  if (mergeByUpdatedAt) {
+    // ===== MERGE PAR PROFIL (last-write-wins sur updatedAt) + TOMBSTONES =====
+    const localProfiles = await getAllProfiles();
+    const localById = new Map(localProfiles.map(p => [p.id, p]));
+    const remoteProfiles = (manifest.profiles || []).filter(p => p && p.id);
+    const remoteById = new Map(remoteProfiles.map(p => [p.id, p]));
+
+    // 1. Fusion des tombstones (union, deletedAt le plus récent par id)
+    const localTombs = await getTombstones();
+    const remoteTombs = Array.isArray(manifest.tombstones) ? manifest.tombstones : [];
+    const tombById = new Map();
+    for (const t of [...localTombs, ...remoteTombs]) {
+      if (!t || !t.id) continue;
+      const prev = tombById.get(t.id);
+      if (!prev || (Date.parse(t.deletedAt) || 0) > (Date.parse(prev.deletedAt) || 0)) {
+        tombById.set(t.id, t);
+      }
+    }
+
+    // 2. Appliquer les tombstones : un profil modifié APRÈS sa suppression
+    //    ailleurs ressuscite (on retire la pierre tombale) ; sinon il meurt
+    //    partout. C'est ce qui fait qu'une suppression sur l'appareil A ne
+    //    revient pas par le push snapshot de l'appareil B.
+    for (const [id, tomb] of [...tombById]) {
+      const ts = Date.parse(tomb.deletedAt) || 0;
+      const local = localById.get(id);
+      const remote = remoteById.get(id);
+      const localTs = local ? (Date.parse(local.updatedAt) || 0) : -1;
+      const remoteTs = remote ? (Date.parse(remote.updatedAt) || 0) : -1;
+      if (localTs > ts || remoteTs > ts) {
+        tombById.delete(id); // résurrection : édition postérieure à la suppression
+        continue;
+      }
+      if (local) {
+        // Suppression directe (ne PAS repasser par deleteProfile, qui
+        // re-tamponnerait le tombstone à maintenant).
+        const store = await tx(STORE_PROFILES, 'readwrite');
+        await reqToPromise(store.delete(id)).catch(() => {});
+        await deleteProfileImages(id).catch(() => {});
+        localById.delete(id);
+        stats.deletedByTombstone++;
+      }
+      // Le cloud contient encore ce profil supprimé → il faut re-pousser pour
+      // l'en retirer (sinon un autre appareil le verrait toujours).
+      if (remote) stats.localNewer++;
+      remoteById.delete(id); // ne pas réimporter un profil supprimé
+    }
+    await setMeta('tombstones', pruneTombstones([...tombById.values()]));
+
+    // 3. Merge des profils : le updatedAt distant est PRÉSERVÉ tel quel.
+    //    (Surtout pas bulkSaveProfiles ici : il écrase updatedAt avec "now",
+    //    ce qui faisait croire à ce device qu'il avait la version la plus
+    //    récente de TOUT → son push suivant écrasait les modifs des autres.)
+    const toSave = [];
+    for (const [id, remote] of remoteById) {
+      const local = localById.get(id);
+      if (!local) {
+        toSave.push(remote);
+        stats.remoteApplied++;
+      } else {
+        const remoteTs = Date.parse(remote.updatedAt) || 0;
+        const localTs = Date.parse(local.updatedAt) || 0;
+        if (remoteTs > localTs) {
+          toSave.push(remote);
+          stats.remoteApplied++;
+        } else if (localTs > remoteTs) {
+          stats.localNewer++;
         }
       }
-      // ON NE SUPPRIME PLUS JAMAIS un profil local au pull. C'était la cause
-      // du bug "Pauline a disparu". Si l'user veut vraiment supprimer un profil,
-      // il le fait via l'UI (qui appelle confirmDelete).
-      // Conséquence : si quelqu'un supprime un profil sur device A, device B
-      // le verra réapparaitre au prochain push de B. C'est plus safe que
-      // l'inverse (perte de données silencieuse).
-      if (toSave.length) {
-        await bulkSaveProfiles(toSave);
-      }
-      totalProfiles = manifest.profiles.length;
-    } else {
-      await bulkSaveProfiles(manifest.profiles);
-      totalProfiles = manifest.profiles.length;
     }
+    // Profils locaux absents du distant (et non tombstonés) = ajouts locaux
+    // pas encore pushés → on les GARDE et on signale qu'un push est requis.
+    for (const [id] of localById) {
+      if (!remoteById.has(id) && !tombById.has(id)) stats.localOnly++;
+    }
+    if (toSave.length) {
+      const db = await openDB();
+      const t = db.transaction(STORE_PROFILES, 'readwrite');
+      const store = t.objectStore(STORE_PROFILES);
+      for (const p of toSave) store.put(p);
+      await new Promise((resolve, reject) => {
+        t.oncomplete = () => resolve();
+        t.onerror = () => reject(t.error);
+        t.onabort = () => reject(t.error || new Error('tx abort'));
+      });
+    }
+    totalProfiles = remoteProfiles.length;
+  } else if (manifest.profiles?.length) {
+    await bulkSaveProfiles(manifest.profiles);
+    totalProfiles = manifest.profiles.length;
   }
 
   // VALIDATION IMAGES : on retient les profileId valides du manifest pour
@@ -545,7 +649,7 @@ export async function importAllChunked(filesByName, { replace = true, mergeByUpd
     } catch (e) { console.warn(`Chunk ${fname} invalide:`, e.message); }
   }
 
-  return { profiles: totalProfiles, images: totalImages };
+  return { profiles: totalProfiles, images: totalImages, ...stats };
 }
 
 // ============= UTILS =============

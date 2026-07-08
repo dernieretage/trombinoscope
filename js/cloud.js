@@ -113,7 +113,7 @@ async function ghApiCall(path, opts = {}, retry = 0) {
       err.waitSec = Math.round(wait / 1000);
       throw err;
     }
-    throw new Error('403 — votre token a-t-il le scope "repo" ou "public_repo" ?');
+    throw new Error('403 — le token n\'a pas le droit d\'écriture (fine-grained : permission « Contents : Read and write » requise).');
   }
   if (res.status >= 500 && retry < 2) {
     await new Promise(r => setTimeout(r, 1500 * (retry + 1)));
@@ -133,18 +133,28 @@ async function getFileSha(filePath) {
   return null;
 }
 
-async function putFile(filePath, content, message) {
-  const sha = await getFileSha(filePath);
-  const body = {
-    message: message || `update ${filePath}`,
-    content: utf8ToBase64(content),
-    branch: BRANCH,
+/**
+ * PUT un fichier. `knownSha` évite le GET préalable (2x moins de requêtes).
+ * Si le sha est périmé (un autre appareil a pushé entre-temps → 409/422),
+ * on re-fetch le sha et on retente UNE fois.
+ */
+async function putFile(filePath, content, message, knownSha) {
+  const sha = knownSha !== undefined ? knownSha : await getFileSha(filePath);
+  const doPut = async (shaToUse) => {
+    const body = {
+      message: message || `update ${filePath}`,
+      content: utf8ToBase64(content),
+      branch: BRANCH,
+    };
+    if (shaToUse) body.sha = shaToUse;
+    return ghApiCall(`contents/${filePath}`, { method: 'PUT', body: JSON.stringify(body) });
   };
-  if (sha) body.sha = sha;
-  const res = await ghApiCall(`contents/${filePath}`, {
-    method: 'PUT',
-    body: JSON.stringify(body),
-  });
+  let res = await doPut(sha);
+  if (res.status === 409 || res.status === 422) {
+    // sha périmé (push concurrent) → refetch + retry
+    const freshSha = await getFileSha(filePath);
+    res = await doPut(freshSha);
+  }
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
     throw new Error(`PUT ${filePath} → ${res.status} : ${txt.slice(0, 200)}`);
@@ -225,47 +235,68 @@ export async function pushCloud({ allowEmpty = false } = {}) {
     const fileNames = Object.keys(exported.files);
     console.log(`[Cloud] Push: ${fileNames.length} fichiers (${Math.round(exported.totalSize / 1024)} Ko)`);
 
-    // REVERT R7#2 : push manifest EN PREMIER (comme à l'origine).
-    // L'ordre "manifest dernier" causait : chunks écrasés avec nouveau contenu
-    // alors que l'ancien manifest pointait toujours dessus → autres devices
-    // pull → données incohérentes (vieille liste de profils + nouvelles images).
-    // Avec manifest first : si push échoue à mi-chunks, le manifest référence
-    // les nouveaux chunks dont certains manquent → safety threshold (50%) annule
-    // le pull côté lecture, ce qui préserve les données locales.
+    // Cache d'état des chunks : { [name]: { hash, sha } }. Un chunk dont le
+    // hash n'a pas bougé depuis le dernier push est SKIPPÉ (ni GET ni PUT).
+    // Une modif de profil sans nouvelle photo = 1 seul PUT (manifest) ≈ 1-2s.
+    const chunkState = (await getMeta('cloud_chunk_state')) || {};
+    const newState = {};
+
+    // Manifest EN PREMIER : si le push plante à mi-chunks, l'ancien manifest
+    // resterait sinon actif en pointant sur des chunks déjà écrasés →
+    // incohérence. Avec manifest first + safety threshold 50% au pull, un
+    // push partiel est simplement ignoré par les lecteurs.
     const manifestPath = `${PATH_PREFIX}/${MANIFEST_FILE}`;
     emit({ status: 'pushing', message: `Push manifest…` });
-    await putFile(manifestPath, exported.files[MANIFEST_FILE], `Cloud sync — ${exported.totalImages} images`);
+    const manifestRes = await putFile(
+      manifestPath, exported.files[MANIFEST_FILE],
+      `Cloud sync — ${exported.totalImages} images`,
+      chunkState.__manifest?.sha,
+    );
+    newState.__manifest = { sha: manifestRes?.content?.sha || null };
     console.log('[Cloud] Manifest pushé OK');
 
-    // Push chaque chunk individuellement
+    // Push uniquement les chunks modifiés
     const chunkNames = fileNames.filter(n => n !== MANIFEST_FILE);
+    let pushed = 0, skipped = 0;
     for (let i = 0; i < chunkNames.length; i++) {
       const name = chunkNames[i];
       const content = exported.files[name];
+      const contentHash = await computeHash(content);
+      const prev = chunkState[name];
+      if (prev && prev.hash === contentHash && prev.sha) {
+        newState[name] = prev;
+        skipped++;
+        continue;
+      }
       const path = `${PATH_PREFIX}/${name}`;
       emit({ status: 'pushing', message: `Push images ${i + 1}/${chunkNames.length}…` });
       try {
-        await putFile(path, content, `Cloud sync — ${name}`);
-        console.log(`[Cloud] ${name} pushé OK (${Math.round(content.length / 1024)} Ko)`);
+        const r = await putFile(path, content, `Cloud sync — ${name}`, prev?.sha);
+        newState[name] = { hash: contentHash, sha: r?.content?.sha || null };
+        pushed++;
+        console.log(`[Cloud] ${name} pushé (${Math.round(content.length / 1024)} Ko)`);
       } catch (e) {
         console.error(`[Cloud] Échec push ${name}:`, e.message);
         throw new Error(`Échec push ${name}: ${e.message}`);
       }
-      await new Promise(r => setTimeout(r, 250)); // throttle
+      await new Promise(r => setTimeout(r, 120)); // throttle léger
     }
+    console.log(`[Cloud] Chunks : ${pushed} pushés, ${skipped} inchangés (skippés)`);
 
-    // Cleanup chunks orphelins (en dernier — les chunks pertinents sont déjà à jour)
-    const newChunkNames = new Set(chunkNames);
-    const remoteChunks = await listChunkFilesOnRemote();
-    const toDelete = remoteChunks.filter(n => !newChunkNames.has(n));
-    if (toDelete.length) {
-      emit({ status: 'pushing', message: `Suppression de ${toDelete.length} fichiers obsolètes…` });
+    // Cleanup chunks orphelins — seulement si le nombre de chunks a diminué
+    // (évite un LIST à chaque push).
+    const prevChunkCount = Object.keys(chunkState).filter(k => k !== '__manifest').length;
+    if (chunkNames.length < prevChunkCount) {
+      const newChunkNames = new Set(chunkNames);
+      const remoteChunks = await listChunkFilesOnRemote();
+      const toDelete = remoteChunks.filter(n => !newChunkNames.has(n));
       for (const name of toDelete) {
         await deleteFile(`${PATH_PREFIX}/${name}`);
         console.log(`[Cloud] ${name} supprimé`);
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 150));
       }
     }
+    await setMeta('cloud_chunk_state', newState);
 
     const manifestStr = exported.files[MANIFEST_FILE];
     const hash = await computeHash(manifestStr + ':' + exported.totalImages);
@@ -279,6 +310,8 @@ export async function pushCloud({ allowEmpty = false } = {}) {
       profiles: JSON.parse(manifestStr).profiles?.length || 0,
       images: exported.totalImages,
       chunks: chunkNames.length,
+      chunksPushed: pushed,
+      chunksSkipped: skipped,
       sizeKb: Math.round(exported.totalSize / 1024),
     };
   } catch (e) {
@@ -295,6 +328,28 @@ export async function pushCloud({ allowEmpty = false } = {}) {
 function rawUrl(name) {
   // Cache busting + raw.githubusercontent.com (peut cacher jusqu'à 5 min)
   return `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/${PATH_PREFIX}/${name}?v=${Date.now()}`;
+}
+
+/**
+ * Vérification RAPIDE (manifest seul, sans les images) : combien de profils
+ * le cloud contient-il ? Sert à décider s'il faut semer (seed) au démarrage,
+ * SANS attendre le téléchargement des ~15 Mo d'images (qui, s'il dépasse le
+ * timeout, laissait le seed se charger PUIS le cloud fusionner par-dessus →
+ * profils en double).
+ */
+export async function cloudProfileCount() {
+  try {
+    let manifestStr = await fetchFileViaApi(`${PATH_PREFIX}/${MANIFEST_FILE}`);
+    if (!manifestStr) {
+      const res = await fetch(rawUrl(MANIFEST_FILE), { cache: 'no-store' });
+      if (!res.ok) return null; // cloud injoignable → null (distinct de 0)
+      manifestStr = await res.text();
+    }
+    const m = JSON.parse(manifestStr);
+    return Array.isArray(m.profiles) ? m.profiles.length : 0;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -415,10 +470,63 @@ export async function pullCloud({ replace = true } = {}) {
       expectedChunks,
       downloadedChunks,
       failedChunks,
+      // Stats de convergence remontées du merge : l'appelant re-push si > 0
+      localNewer: result.localNewer || 0,
+      localOnly: result.localOnly || 0,
+      remoteApplied: result.remoteApplied || 0,
+      deletedByTombstone: result.deletedByTombstone || 0,
     };
   } finally {
     isSyncing = false;
   }
+}
+
+// ============= CYCLE COMPLET PULL → MERGE → PUSH =============
+
+let syncCycleQueued = false;
+let lastPushFailAt = 0; // cooldown anti-boucle si le push échoue (403, réseau…)
+
+/**
+ * LE point d'entrée pour sauvegarder : pull (merge intelligent, hash-aware —
+ * ne télécharge les images que si le distant a changé) puis push.
+ * Le pull d'abord évite d'écraser les modifs des autres appareils faites
+ * entre-temps ; le push propage les nôtres. Si un cycle tourne déjà, on en
+ * re-planifie un — jamais de perte silencieuse.
+ */
+export async function syncCloud({ reason = 'manual' } = {}) {
+  const cfg = await getCloudConfig();
+  if (!cfg.token) return { skipped: true, reason: 'no token' };
+  if (isSyncing) {
+    if (!syncCycleQueued) {
+      syncCycleQueued = true;
+      setTimeout(() => { syncCycleQueued = false; syncCloud({ reason: reason + '+requeue' }); }, 2000);
+    }
+    return { skipped: true, reason: 'busy, requeued' };
+  }
+  // Cooldown : un push qui vient d'échouer (token sans droit, réseau HS)
+  // ne doit pas boucler toutes les 2s. Les déclenchements auto respectent
+  // 60s de pause ; un clic manuel sur Sauvegarder retente immédiatement.
+  const isAuto = reason !== 'manual' && reason !== 'save-button';
+  if (isAuto && Date.now() - lastPushFailAt < 60_000) {
+    return { skipped: true, reason: 'cooldown après échec push' };
+  }
+  console.log(`[Cloud] syncCloud (${reason})`);
+  // Pull hash-aware : ne re-télécharge rien si le cloud n'a pas bougé
+  const pull = await setupCloudAutoPull();
+  const dirty = await getMeta(META_LOCAL_DIRTY);
+  const needPush = dirty
+    || (pull && ((pull.localNewer || 0) > 0 || (pull.localOnly || 0) > 0));
+  let push = null;
+  if (needPush) {
+    try {
+      push = await pushCloud();
+      lastPushFailAt = 0;
+    } catch (e) {
+      lastPushFailAt = Date.now();
+      throw e;
+    }
+  }
+  return { pull, push, pushed: !!push };
 }
 
 // ============= AUTO-PULL AU DÉMARRAGE =============
@@ -452,25 +560,30 @@ export async function setupCloudAutoPull() {
   const lastHash = await getMeta(META_LAST_HASH);
   const localProfiles = await getAllProfiles();
 
-  // Cas 1 : appareil vierge ou seul le seed est chargé → pull silencieux
-  // Cas 2 : remote hash différent du dernier connu → pull silencieux si pas dirty
-  // Cas 3 : on a des modifs locales non-pushées → ne touche pas, demande à l'user
-  const isFreshDevice = !cfg.lastSync && localProfiles.length > 0; // a juste le seed
+  // Cas 1 : appareil vierge ou seul le seed est chargé → pull (merge)
+  // Cas 2 : remote a changé depuis le dernier pull → pull (merge)
+  // Cas 3 : hash identique MAIS désaccord sur le nombre de profils → un
+  //         ajout/suppression local n'a jamais été poussé (app tuée avant le
+  //         push, etc.) → pull (merge) pour déclencher la détection
+  //         localOnly/localNewer et le push-back de convergence.
+  // NOTE : le pull est désormais un MERGE par profil (jamais destructif),
+  // donc le faire même avec des modifs locales "dirty" est SAFE — les modifs
+  // locales plus récentes gagnent toujours.
+  const isFreshDevice = !cfg.lastSync && localProfiles.length > 0;
   const remoteChanged = remoteHash !== lastHash;
+  const countMismatch = localProfiles.length !== (manifest.profiles?.length || 0);
 
-  if (isFreshDevice || (remoteChanged && !localDirty)) {
+  if (isFreshDevice || remoteChanged || countMismatch || localDirty) {
     emit({ status: 'pulling', message: `Récupération depuis le cloud (${manifest.profiles.length} profils + ${manifest.totalImages || 0} images)…` });
     try {
       const result = await pullCloud({ replace: true });
-      if (result.success && result.profiles > 0) {
+      if (result.success) {
         return { autoPulled: true, ...result };
       }
     } catch (e) {
       console.warn('[Cloud] Auto-pull failed:', e.message);
       emit({ status: 'error', error: e.message });
     }
-  } else if (remoteChanged && localDirty) {
-    emit({ status: 'remote-newer', remoteProfiles: manifest.profiles.length, remoteImages: manifest.totalImages });
   }
   return { skipped: true };
 }
@@ -495,17 +608,13 @@ export async function scheduleCloudPush(delayMs = 4000) {
 
   pushTimer = setTimeout(async () => {
     pushTimer = null;
-    // Si un pull est en cours, attendre + replanifier (évite l'écrasement remote)
-    if (isSyncing) {
-      console.log('[Cloud] Push différé : pull en cours.');
-      pushTimer = setTimeout(() => scheduleCloudPush(0), 1500);
-      return;
-    }
     try {
       const cfg = await getCloudConfig();
-      if (cfg.token && cfg.auto) await pushCloud();
+      // Cycle complet pull→merge→push : intègre d'abord les modifs des autres
+      // appareils, puis propage les nôtres. syncCloud gère lui-même le "busy".
+      if (cfg.token && cfg.auto) await syncCloud({ reason: 'auto-save' });
     } catch (e) {
-      console.warn('[Cloud] Auto-push failed:', e.message);
+      console.warn('[Cloud] Auto-sync failed:', e.message);
       // Replanifier si quota encore atteint, silencieusement
       if (e.code === 'QUOTA' || isCloudQuotaExhausted()) {
         const retryDelay = Math.max(5000, cloudQuotaResetAt - Date.now() + 2000);

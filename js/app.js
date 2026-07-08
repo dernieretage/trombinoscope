@@ -27,8 +27,9 @@ import {
   getCloudConfig, setCloudToken, setCloudAuto, clearCloudConfig,
   testCloudConnection, pushCloud, pullCloud, setupCloudAutoPull,
   scheduleCloudPush, onCloudStateChange, diagnoseCloud, markCloudDirty,
-  generateCloudInviteLink, consumeCloudActivateParam,
+  generateCloudInviteLink, consumeCloudActivateParam, syncCloud, cloudProfileCount,
 } from './cloud.js';
+import { ensureAuthGate } from './auth.js';
 import {
   getAiKey, setAiKey, getAiModel, setAiModel,
   isAiConfigured, scanProfileWithAi, testAiConnection,
@@ -64,6 +65,51 @@ const STATE = {
   STATE.filters.sort = await getMeta('sort') || 'favoris';
   STATE.filters.profession = await getMeta('profession') || 'all';
 
+  // PORTE D'ENTRÉE : mot de passe → déverrouille la clé d'écriture pour CET
+  // appareil (plus aucun token à configurer, sur aucun appareil). Le boot
+  // (pull public en lecture) continue en dessous pendant la saisie.
+  ensureAuthGate({
+    onUnlocked: () => {
+      updateSyncPill();
+      updateSaveButton();
+      toast('✓ Accès déverrouillé — cet appareil peut maintenant modifier le trombinoscope.', { type: 'ok', timeout: 4500 });
+      // Pousser d'éventuelles données locales en attente (profil ajouté avant
+      // le déverrouillage, par exemple).
+      syncCloud({ reason: 'unlock' }).catch(() => {});
+    },
+  }).catch((e) => console.warn('[Auth] gate error:', e.message));
+
+  // ===== REMISE À ZÉRO UNIQUE (incident doublons du 08/07/2026) =====
+  // Certains appareils avaient accumulé le seed EN PLUS du cloud (doublons).
+  // Cette migration, exécutée UNE SEULE FOIS par appareil, vide le local et
+  // force une réadoption propre du cloud. Après ça, plus aucun doublon ne
+  // peut être re-poussé.
+  const RESET_FLAG = 'hard_reset_dupfix_20260708';
+  if (!(await getMeta(RESET_FLAG))) {
+    try {
+      const localForReset = await getAllProfiles();
+      const remoteN = await cloudProfileCount();
+      // On ne réinitialise que si le cloud est joignable ET non-vide, pour ne
+      // pas effacer un appareil hors-ligne qui aurait les seules données.
+      if (remoteN && remoteN > 0) {
+        const bootMark = document.querySelector('.boot__mark');
+        if (bootMark) bootMark.innerHTML = '<span style="font-size:10px; letter-spacing:.04em">MAJ…</span>';
+        const { clearAllProfilesAndImages } = await import('./store.js');
+        await clearAllProfilesAndImages();
+        await setMeta('seeded', true);        // ne jamais re-semer
+        await setMeta(RESET_FLAG, true);
+        await setMeta('cloud_last_hash', null); // forcer un vrai pull
+        await setMeta('cloud_chunk_state', null);
+        console.log(`[Reset] Doublons purgés (local avait ${localForReset.length}, cloud=${remoteN}). Réadoption propre.`);
+      } else {
+        // Cloud injoignable : on repousse la migration au prochain boot.
+        console.log('[Reset] Cloud injoignable, migration reportée.');
+      }
+    } catch (e) {
+      console.warn('[Reset] migration échouée (reportée):', e.message);
+    }
+  }
+
   // PRIORITÉ #1 : si DB vide, tenter d'abord le cloud AVANT de seed
   // (sinon en navigation privée / nouveau device, on flash le seed obsolète
   // pendant 5-10s, ce qui masque les vraies données).
@@ -75,21 +121,34 @@ const STATE = {
       bootMark.innerHTML = '<span style="font-size:11px; letter-spacing:.05em">CLOUD…</span>';
     }
     let cloudOk = false;
-    try {
-      const r = await Promise.race([
-        setupCloudAutoPull(),
-        new Promise(resolve => setTimeout(() => resolve({ skipped: true, reason: 'timeout 8s' }), 8000)),
-      ]);
-      if (r?.autoPulled && r.profiles > 0) {
-        profiles = await getAllProfiles();
-        cloudOk = true;
-        console.log(`[Boot] Cloud chargé en priorité : ${r.profiles} profils + ${r.images} images`);
+    // ÉTAPE 1 : vérification RAPIDE (manifest seul) — le cloud a-t-il des données ?
+    // On décide de semer ou non SANS attendre les 15 Mo d'images (sinon le seed
+    // se chargeait sur timeout, puis le cloud fusionnait → doublons).
+    let remoteCount = null;
+    try { remoteCount = await cloudProfileCount(); } catch {}
+
+    if (remoteCount && remoteCount > 0) {
+      // Le cloud a des profils → on télécharge tout (images incluses), SANS
+      // timeout qui déclencherait le seed. On attend la fin réelle du pull.
+      try {
+        const r = await setupCloudAutoPull();
+        if (r?.autoPulled) {
+          profiles = await getAllProfiles();
+          cloudOk = profiles.length > 0;
+          console.log(`[Boot] Cloud chargé : ${r.profiles} profils + ${r.images} images`);
+        }
+      } catch (e) {
+        console.warn('[Boot] Cloud pull au démarrage échoué:', e.message);
       }
-    } catch (e) {
-      console.warn('[Boot] Cloud pull au démarrage échoué:', e.message);
+      // Filet : même si le pull a partiellement échoué, on NE sème PAS quand le
+      // cloud est connu non-vide (éviter les doublons seed+cloud à tout prix).
+      if (!cloudOk) {
+        await setMeta('seeded', true); // empêcher tout seed ultérieur
+        console.warn('[Boot] Cloud non-vide mais pull incomplet — seed bloqué pour éviter les doublons.');
+      }
     }
-    // Cloud vide ou injoignable → on seed comme fallback
-    if (!cloudOk && !profiles.length && !(await getMeta('seeded'))) {
+    // ÉTAPE 2 : cloud vide OU injoignable → seed de démarrage (une seule fois)
+    if (!cloudOk && !profiles.length && remoteCount === 0 && !(await getMeta('seeded'))) {
       const past = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const seeded = SEED_PROFILES.map(p => ({
         id: uid(),
@@ -272,11 +331,7 @@ const STATE = {
     });
   }
 
-  // Banner d'onboarding : si cet appareil n'a pas de token cloud mais le cloud
-  // contient des données → on est sur un appareil "vierge". Affiche un gros CTA
-  // pour scanner le QR depuis un autre appareil. Après 2s pour laisser le boot
-  // se terminer.
-  setTimeout(() => maybeShowOnboardingBanner(), 2500);
+  // (L'ancien banner d'onboarding QR est remplacé par la porte mot de passe.)
 })();
 
 async function maybeShowOnboardingBanner() {
@@ -373,6 +428,16 @@ async function doCloudPullAndRefresh({ silent = false, force = false, source = '
   __cloudPullInFlight = true;
   try {
     const r = await setupCloudAutoPull();
+    // CONVERGENCE : si le merge a détecté du contenu local plus récent ou
+    // absent du cloud (profil ajouté ici, modif locale plus fraîche), on
+    // re-pousse automatiquement pour que les AUTRES appareils le voient.
+    if (r && ((r.localNewer || 0) > 0 || (r.localOnly || 0) > 0)) {
+      const cfg = await getCloudConfig();
+      if (cfg.token) {
+        console.log(`[Sync] Push-back requis (localNewer=${r.localNewer}, localOnly=${r.localOnly})`);
+        scheduleCloudPush(1500);
+      }
+    }
     if (r?.autoPulled && r.profiles > 0) {
       STATE.profiles = await getAllProfiles();
       STATE.imagesByProfile.clear();
@@ -636,6 +701,7 @@ function hookUI() {
     if (a === 'reapply-enrichment') return reapplyEnrichment();
     if (a === 'diagnose-sync') return doDiagnoseSync();
     if (a === 'backup-local') return doBackupLocal();
+    if (a === 'toggle-theme') return $('#theme-toggle').click();
     if (a === 'settings') return openSettingsDialog();
     if (a === 'shortcuts') return openDialog('shortcuts-dialog');
     if (a === 'reset') return doReset();
@@ -764,16 +830,26 @@ function hookUI() {
     }
   });
 
-  // bouton "Sauvegarder" — utilise CLOUD PUBLIC en priorité, sinon Gist
+  // bouton "Sauvegarder" — cycle complet pull→merge→push
   $('#save-btn').addEventListener('click', async () => {
     const cloudCfg = await getCloudConfig();
     const syncCfg = await getSyncConfig();
 
-    // Cas 1 : cloud public configuré → push cloud
+    // Cas 1 : appareil déverrouillé → sync complète (intègre les modifs des
+    // autres appareils PUIS pousse les nôtres — zéro écrasement croisé)
     if (cloudCfg.token) {
       try {
-        const r = await pushCloud();
-        toast(`✓ Cloud public : ${r.profiles} profils + ${r.images} images (${r.chunks} fichiers, ${r.sizeKb} Ko). Visible automatiquement sur tous appareils.`, { type: 'ok', timeout: 6000 });
+        const r = await syncCloud({ reason: 'save-button' });
+        if (r.pushed && r.push) {
+          toast(`✓ Synchronisé : ${r.push.profiles} profils + ${r.push.images} images (${r.push.chunksPushed ?? r.push.chunks} fichier(s) envoyés). Visible sur tous les appareils.`, { type: 'ok', timeout: 5000 });
+        } else if (r.skipped) {
+          toast('Synchronisation déjà en cours…', { type: 'info', timeout: 2500 });
+        } else {
+          toast('✓ Tout est déjà synchronisé.', { type: 'ok', timeout: 3000 });
+        }
+        // Recharger l'affichage (le pull a pu ramener des modifs distantes)
+        STATE.profiles = await getAllProfiles();
+        render();
       } catch (e) {
         if (e.code === 'QUOTA' || /Quota GitHub/.test(e.message)) {
           const wait = e.waitSec || 60;
@@ -783,7 +859,7 @@ function hookUI() {
           });
           scheduleCloudPush(wait * 1000 + 2000);
         } else {
-          toast('Push cloud échoué : ' + e.message, { type: 'err', timeout: 6000 });
+          toast('Sync échouée : ' + e.message, { type: 'err', timeout: 6000 });
         }
       }
       return;
@@ -811,25 +887,14 @@ function hookUI() {
       return;
     }
 
-    // Cas 3 : rien configuré → ouvrir Réglages avec focus sur section CLOUD
-    openSettingsDialog();
-    setTimeout(() => {
-      const dlg = $('#settings-dialog');
-      if (dlg?.open) {
-        const cloudInput = $('#cloud-token-input');
-        cloudInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        cloudInput?.focus();
-        const section = cloudInput?.closest('.settings__section');
-        if (section) {
-          section.style.transition = 'box-shadow .4s';
-          section.style.boxShadow = '0 0 0 3px var(--accent)';
-          setTimeout(() => { section.style.boxShadow = ''; }, 1500);
-        }
-      }
-    }, 300);
-    toast('Activez le cloud public auto : vos données seront accessibles depuis n\'importe quel appareil.', {
-      type: 'info', timeout: 5000,
-    });
+    // Cas 3 : appareil verrouillé → re-proposer le mot de passe
+    ensureAuthGate({
+      onUnlocked: () => {
+        updateSyncPill();
+        updateSaveButton();
+        syncCloud({ reason: 'unlock-from-save' }).catch(() => {});
+      },
+    }).catch(() => {});
   });
 
   // bouton "↻ Rafraîchir" — pull manuel depuis le cloud
@@ -1077,6 +1142,11 @@ async function openProfileDialog(id) {
       await saveProfile(profile);
       maybeSchedulePush();
     },
+    onProjectsChange: async (projects) => {
+      profile.projects = projects;
+      await saveProfile(profile);
+      maybeSchedulePush();
+    },
     onUploadImages: async (files) => {
       await addImagesToProfile(profile, files);
       const imgs = await getProfileImages(profile.id);
@@ -1195,6 +1265,7 @@ function openEditDialog(profile = null) {
     if (form.elements.agency) form.elements.agency.value = profile.agency || '';
     form.elements.lastContact.value = profile.lastContact || '';
     form.elements.tags.value = (profile.tags || []).join(', ');
+    form.elements.projects.value = profile.projects || '';
     form.elements.notes.value = profile.notes || '';
   }
   if (!dlg.open) dlg.showModal();
@@ -1270,6 +1341,7 @@ function hookEditForm() {
       agency: (data.agency || '').trim(),
       lastContact: data.lastContact || '',
       tags: (data.tags || '').split(',').map(t => t.trim()).filter(Boolean),
+      projects: data.projects || '',
       notes: data.notes,
     };
     delete profile.profession; // nettoyer ancien champ
@@ -1818,7 +1890,7 @@ async function doExport() {
 async function doExportCsv() {
   const profiles = STATE.profiles;
   if (!profiles.length) { toast('Aucun profil à exporter.', { type: 'warn' }); return; }
-  const cols = ['name', 'professions', 'instagram', 'phone', 'email', 'website', 'location', 'tags', 'status', 'notes', 'createdAt', 'updatedAt'];
+  const cols = ['name', 'professions', 'instagram', 'phone', 'email', 'website', 'location', 'agency', 'rate', 'tags', 'status', 'projects', 'notes', 'createdAt', 'updatedAt'];
   const escapeCsv = (v) => {
     if (v == null) return '';
     const s = Array.isArray(v) ? v.join(', ') : String(v);
@@ -2288,8 +2360,8 @@ async function updateSaveButton() {
   const label = btn.querySelector('.savebtn__label');
   if (!hasAnySync) {
     btn.classList.add('is-unconfigured');
-    if (label) label.textContent = 'Activer le cloud';
-    btn.title = 'Le cloud public auto n\'est pas encore activé. Cliquez pour le configurer (1 min).';
+    if (label) label.textContent = 'Déverrouiller';
+    btn.title = 'Entrez le mot de passe pour pouvoir modifier depuis cet appareil.';
     return;
   }
   const lastSync = cloudCfg.lastSync || syncCfg.lastSync;
