@@ -945,18 +945,18 @@ function hookUI() {
     }
   });
 
-  // bouton "Scanner photos IG" en évidence — mode rapide par défaut (Dumpor, sans rate-limit)
+  // bouton "Scanner photos IG" — cloud d'abord (robot back-office), puis scan
+  // client pour ce qui manque encore. JAMAIS muet, JAMAIS désactivé.
   const igBulkBtn = $('#ig-bulk-btn');
-  igBulkBtn.addEventListener('click', () => bulkImportProfilePicsOnly());
+  igBulkBtn.addEventListener('click', () => onIgBulkClick());
   // Mettre à jour le badge avec le nombre de profils sans images
   const updateIgBulkCount = () => {
     const without = STATE.profiles.filter(p => p.instagram && !STATE.imagesByProfile.get(p.id)?.length).length;
     const countEl = $('#ig-bulk-count');
     if (countEl) countEl.textContent = without > 0 ? String(without) : '';
-    igBulkBtn.disabled = without === 0;
     igBulkBtn.title = without === 0
-      ? 'Tous les profils Instagram ont des images.'
-      : `${without} profil${without > 1 ? 's' : ''} Instagram sans image — clic pour scanner`;
+      ? 'Toutes les photos sont là — clic pour vérifier le cloud quand même.'
+      : `${without} profil${without > 1 ? 's' : ''} Instagram sans image — clic pour récupérer (cloud, puis Instagram)`;
   };
   // exposer pour appel après sync/import
   window.__updateIgBulkCount = updateIgBulkCount;
@@ -1503,6 +1503,34 @@ async function bulkImportProfilePicsOnly({ skipConfirm = false } = {}) {
 
 if (typeof window !== 'undefined') {
   window.__bulkProfilePicsOnly = bulkImportProfilePicsOnly;
+}
+
+// Clic sur « Scanner photos IG » : 1) on récupère d'abord le CLOUD (le robot
+// back-office y dépose les photos — source la plus fiable, Instagram bloque
+// souvent les fetchs côté navigateur), 2) s'il manque encore des photos, on
+// lance le scan Instagram client. Toujours un retour visible à l'écran.
+async function onIgBulkClick() {
+  const countMissing = () =>
+    STATE.profiles.filter(p => p.instagram && !STATE.imagesByProfile.get(p.id)?.length).length;
+  const before = countMissing();
+  const t = toast('Vérification des photos sur le cloud…', { type: 'info', timeout: 0 });
+  try { await doCloudPullAndRefresh({ silent: true, force: true, source: 'manual' }); }
+  catch (e) { console.warn('[IG bulk] pull cloud échoué:', e.message); }
+  t.dismiss();
+  const after = countMissing();
+  const gained = before - after;
+  if (after === 0) {
+    toast(gained > 0
+      ? `✓ ${gained} photo${gained > 1 ? 's' : ''} récupérée${gained > 1 ? 's' : ''} du cloud — tous les profils ont leur photo.`
+      : '✓ Tous les profils ont déjà leur photo (cloud vérifié à l\'instant).',
+      { type: 'ok', timeout: 5000 });
+    window.__updateIgBulkCount?.();
+    return;
+  }
+  if (gained > 0) {
+    toast(`${gained} photo${gained > 1 ? 's' : ''} récupérée${gained > 1 ? 's' : ''} du cloud — ${after} restante${after > 1 ? 's' : ''}, scan Instagram…`, { type: 'info', timeout: 4000 });
+  }
+  await bulkImportProfilePicsOnly();
 }
 
 async function importInstagramForProfile(profile, { silent = false } = {}) {

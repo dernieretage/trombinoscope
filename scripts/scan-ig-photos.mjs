@@ -139,17 +139,30 @@ async function downloadAsDataUri(picUrl) {
   return { dataUri: `data:${type};base64,${buf.toString('base64')}`, type };
 }
 
-// Recharge tous les records d'images depuis les chunks existants
+// Recharge tous les records d'images depuis les chunks existants.
+// DÉDUPLIQUE par clé (des pushs concurrents d'appareils peuvent laisser le
+// même record dans deux chunks) : la dernière occurrence gagne (chunks lus
+// dans l'ordre). L'app fait pareil (put par clé) — on garde le cloud honnête.
 function readAllImages() {
-  const files = readdirSync(CLOUD_DIR).filter((f) => /^trombinoscope-images-\d+\.json$/.test(f));
-  const images = [];
+  const files = readdirSync(CLOUD_DIR).filter((f) => /^trombinoscope-images-\d+\.json$/.test(f)).sort();
+  const byKey = new Map();
+  let total = 0;
   for (const f of files) {
     try {
       const chunk = JSON.parse(readFileSync(join(CLOUD_DIR, f), 'utf8'));
-      if (Array.isArray(chunk.images)) images.push(...chunk.images);
+      if (Array.isArray(chunk.images)) {
+        for (const im of chunk.images) {
+          if (!im || !im.key) continue;
+          total++;
+          byKey.set(im.key, im);
+        }
+      }
     } catch (e) { console.warn(`[warn] chunk illisible ${f}: ${e.message}`); }
   }
-  return { images, files };
+  const images = [...byKey.values()];
+  const deduped = total - images.length;
+  if (deduped) console.log(`Doublons retirés (même clé dans plusieurs chunks) : ${deduped}`);
+  return { images, files, deduped };
 }
 
 // Réécrit manifest + chunks au format exact de l'app
@@ -185,7 +198,7 @@ function writeCloud(manifest, allImages, oldChunkFiles) {
 async function main() {
   const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'));
   const profiles = manifest.profiles || [];
-  let { images: allImages, files: oldChunkFiles } = readAllImages();
+  let { images: allImages, files: oldChunkFiles, deduped } = readAllImages();
 
   // --- PASSE 1 : nettoyer les logos/placeholders stockés par erreur ---
   // Un logo est : (a) un hash connu, ou (b) une image dont le data EXACT est
@@ -209,7 +222,7 @@ async function main() {
   const candidates = profiles.filter((p) => p && p.id && p.instagram && !hasImage.has(p.id));
 
   console.log(`Profils : ${profiles.length} | avec vraie photo : ${hasImage.size} | à récupérer : ${candidates.length}`);
-  if (!candidates.length && !removed) { console.log('Rien à faire.'); return; }
+  if (!candidates.length && !removed && !deduped) { console.log('Rien à faire.'); return; }
 
   // On mélange les candidats : sur les runs planifiés, des profils différents
   // sont tentés en premier (utile si Instagram limite après quelques requêtes).
@@ -238,9 +251,9 @@ async function main() {
     await sleep(jitter(DELAY_MS));
   }
 
-  if (added > 0 || removed > 0) {
+  if (added > 0 || removed > 0 || deduped > 0) {
     writeCloud(manifest, allImages, oldChunkFiles);
-    console.log(`\n${removed} logo(s) retiré(s), ${added} photo(s) ajoutée(s). Cloud : ${manifest.imageChunks} chunks, ${manifest.totalImages} images.`);
+    console.log(`\n${removed} logo(s) retiré(s), ${added} photo(s) ajoutée(s), ${deduped} doublon(s) purgé(s). Cloud : ${manifest.imageChunks} chunks, ${manifest.totalImages} images.`);
   } else {
     console.log('\nAucun changement (comptes privés/introuvables ou rate-limit). Nouvelle tentative au prochain passage.');
   }
