@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "exportedAt": "2026-07-08T10:35:40.606Z",
+  "exportedAt": "2026-07-08T10:36:39.213Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -1503,7 +1503,8 @@
       "tags": [],
       "notes": "",
       "createdAt": "2026-05-11T10:41:08.577Z",
-      "updatedAt": "2026-05-12T15:12:00.382Z"
+      "updatedAt": "2026-07-08T10:35:50.460Z",
+      "projects": "SNCF danse "
     },
     {
       "id": "p_wxcfr1h45moyydw0y",
