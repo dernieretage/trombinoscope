@@ -74,6 +74,16 @@ async function computeHash(str) {
   return (h >>> 0).toString(36);
 }
 
+// Hash CANONIQUE du manifest, identique au push, au pull et à l'auto-pull.
+// Avant, trois recettes divergentes (pretty vs compact, totalImages déclaré vs
+// nombre réellement importé) → le hash stocké n'égalait jamais le hash distant
+// → re-pull complet (~15 Mo) à CHAQUE poll de 60 s. On normalise en re-parsant
+// (formatage indifférent) et on se base TOUJOURS sur manifest.totalImages.
+async function manifestHash(manifestStrOrObj) {
+  const obj = typeof manifestStrOrObj === 'string' ? JSON.parse(manifestStrOrObj) : manifestStrOrObj;
+  return computeHash(JSON.stringify(obj) + ':' + (obj.totalImages || 0));
+}
+
 // ============= GITHUB API (write) =============
 
 async function ghApiCall(path, opts = {}, retry = 0) {
@@ -299,7 +309,7 @@ export async function pushCloud({ allowEmpty = false } = {}) {
     await setMeta('cloud_chunk_state', newState);
 
     const manifestStr = exported.files[MANIFEST_FILE];
-    const hash = await computeHash(manifestStr + ':' + exported.totalImages);
+    const hash = await manifestHash(manifestStr);
     await setMeta(META_LAST_SYNC, new Date().toISOString());
     await setMeta(META_LAST_HASH, hash);
     await setMeta(META_LOCAL_DIRTY, false);
@@ -453,7 +463,7 @@ export async function pullCloud({ replace = true } = {}) {
       return { success: false, error: e.message };
     }
 
-    const hash = await computeHash(filesByName[MANIFEST_FILE] + ':' + (result.images || 0));
+    const hash = await manifestHash(filesByName[MANIFEST_FILE]);
     await setMeta(META_LAST_SYNC, new Date().toISOString());
     await setMeta(META_LAST_HASH, hash);
     emit({ status: 'idle', lastSync: new Date().toISOString() });
@@ -506,7 +516,9 @@ export async function syncCloud({ reason = 'manual' } = {}) {
   // Cooldown : un push qui vient d'échouer (token sans droit, réseau HS)
   // ne doit pas boucler toutes les 2s. Les déclenchements auto respectent
   // 60s de pause ; un clic manuel sur Sauvegarder retente immédiatement.
-  const isAuto = reason !== 'manual' && reason !== 'save-button';
+  // includes() et pas ===  : un cycle re-queué garde 'save-button' dans reason
+  // ('save-button+requeue') et doit rester traité comme manuel (pas de cooldown).
+  const isAuto = !reason.includes('manual') && !reason.includes('save-button');
   if (isAuto && Date.now() - lastPushFailAt < 60_000) {
     return { skipped: true, reason: 'cooldown après échec push' };
   }
@@ -517,20 +529,31 @@ export async function syncCloud({ reason = 'manual' } = {}) {
   // ex. renommage « Thomas Porchez » perdu). Après ce merge, le local = union
   // des deux états → le push ne peut plus rien faire régresser.
   const pull = await pullCloud({ replace: true });
+  // GARDE-FOU CRITIQUE : ne JAMAIS pousser derrière un pull qui n'a pas abouti.
+  // Sinon on écrase le distant avec un état local NON fusionné → perte de
+  // profils, de tombstones (suppressions annulées) et d'images. `success:true`
+  // couvre le cas « cloud vide » (1er push légitime). `failedChunks` = pull
+  // partiel toléré à la lecture, mais on ne réécrit pas par-dessus.
+  const pullOk = pull && pull.success === true && !pull.failedChunks;
+  if (!pullOk) {
+    console.warn('[Cloud] Push annulé : pull non abouti (', pull?.reason || pull?.error || `partiel ${pull?.failedChunks || ''}`, ') — on retentera au prochain cycle.');
+    return { pull, push: null, pushed: false, pushDeferred: true };
+  }
   const dirty = await getMeta(META_LOCAL_DIRTY);
-  const needPush = dirty
-    || (pull && ((pull.localNewer || 0) > 0 || (pull.localOnly || 0) > 0));
+  const needPush = dirty || (pull.localNewer || 0) > 0 || (pull.localOnly || 0) > 0;
   let push = null;
   if (needPush) {
     try {
       push = await pushCloud();
-      lastPushFailAt = 0;
+      if (push && push.success) lastPushFailAt = 0;
     } catch (e) {
       lastPushFailAt = Date.now();
       throw e;
     }
   }
-  return { pull, push, pushed: !!push };
+  // push peut retourner {skipped:true} si une autre sync occupe isSyncing :
+  // ce N'EST PAS un succès (dirty non nettoyé) → pushed reflète le vrai push.
+  return { pull, push, pushed: !!(push && push.success) };
 }
 
 // ============= AUTO-PULL AU DÉMARRAGE =============
@@ -560,7 +583,7 @@ export async function setupCloudAutoPull() {
 
   if (!manifest?.profiles?.length) return { skipped: true, reason: 'manifest empty' };
 
-  const remoteHash = await computeHash(JSON.stringify(manifest) + ':' + (manifest.totalImages || 0));
+  const remoteHash = await manifestHash(manifest);
   const lastHash = await getMeta(META_LAST_HASH);
   const localProfiles = await getAllProfiles();
 
@@ -575,7 +598,11 @@ export async function setupCloudAutoPull() {
   // locales plus récentes gagnent toujours.
   const isFreshDevice = !cfg.lastSync && localProfiles.length > 0;
   const remoteChanged = remoteHash !== lastHash;
-  const countMismatch = localProfiles.length !== (manifest.profiles?.length || 0);
+  // countMismatch ne sert qu'à déclencher un push-back d'ajouts locaux : inutile
+  // (et coûteux : ~15 Mo/60 s à vie) sur un appareil verrouillé SANS token, qui
+  // ne peut de toute façon pas pousser. Un vrai changement distant reste couvert
+  // par remoteChanged. On ne le prend donc en compte que si on peut pousser.
+  const countMismatch = !!cfg.token && localProfiles.length !== (manifest.profiles?.length || 0);
 
   if (isFreshDevice || remoteChanged || countMismatch || localDirty) {
     emit({ status: 'pulling', message: `Récupération depuis le cloud (${manifest.profiles.length} profils + ${manifest.totalImages || 0} images)…` });

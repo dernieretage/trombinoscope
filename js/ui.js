@@ -1,5 +1,5 @@
 // Rendu UI : cards, rows, modals, toasts
-import { avatarFor, escapeHTML, fmtBytes, fmtDate, getInitials, highlight, objectURLFor, revokeObjectURL } from './utils.js';
+import { avatarFor, escapeHTML, fmtBytes, fmtDate, getInitials, highlight, objectURLFor, revokeObjectURL, safeExternalUrl } from './utils.js';
 import { STATUSES } from './seed.js';
 
 const STATUS_BY_ID = Object.fromEntries(STATUSES.map(s => [s.id, s]));
@@ -315,8 +315,15 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
     for (const c of contacts) {
       const a = document.createElement('a');
       a.className = 'profile__contact';
-      a.href = c.href;
-      if (c.href.startsWith('http')) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+      const safe = safeExternalUrl(c.href);
+      if (safe) {
+        a.href = safe;
+        if (/^https?:/i.test(safe)) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+      } else {
+        // schéma non autorisé (ex. javascript:) → lien neutralisé, label visible
+        a.setAttribute('role', 'text');
+        a.title = 'Lien ignoré (adresse non autorisée)';
+      }
       a.innerHTML = svgIcon(c.icon) + `<span>${escapeHTML(c.label)}</span>`;
       grid.appendChild(a);
     }
@@ -586,13 +593,22 @@ export function toast(message, { type = 'info', timeout = 3500, action } = {}) {
   el.appendChild(close);
 
   c.appendChild(el);
+  // Popover → rendu dans le "top layer", au-dessus du backdrop des modales
+  // (sinon les toasts émis fiche/réglages ouverts restaient invisibles derrière
+  // le flou). Silencieux si l'API n'existe pas (vieux navigateur).
+  try { if (c.hasAttribute('popover') && !c.matches(':popover-open')) c.showPopover(); } catch {}
 
   let t;
   function dismiss() {
     if (!el.parentNode) return;
     clearTimeout(t);
     el.classList.add('is-out');
-    setTimeout(() => el.remove(), 250);
+    setTimeout(() => {
+      el.remove();
+      // Refermer le popover quand il ne reste plus aucun toast (sinon un
+      // conteneur vide resterait dans le top layer).
+      try { if (!c.children.length && c.matches(':popover-open')) c.hidePopover(); } catch {}
+    }, 250);
   }
   if (timeout) t = setTimeout(dismiss, timeout);
 

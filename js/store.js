@@ -13,8 +13,16 @@ function openDB() {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onerror = () => reject(req.error);
-    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => { dbPromise = null; reject(req.error); };
+    req.onsuccess = () => {
+      const db = req.result;
+      // Si le navigateur ferme la connexion de force (Safari sous pression
+      // mémoire) ou qu'une autre tab upgrade la base, on invalide le cache
+      // pour rouvrir à la prochaine opération (sinon InvalidStateError à vie).
+      db.onclose = () => { dbPromise = null; };
+      db.onversionchange = () => { try { db.close(); } catch {} dbPromise = null; };
+      resolve(db);
+    };
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains(STORE_PROFILES)) {
@@ -113,6 +121,7 @@ export async function deleteProfile(id) {
   const imgs = await getProfileImages(id).catch(() => []);
   const store = await tx(STORE_PROFILES, 'readwrite');
   await reqToPromise(store.delete(id));
+  memoryImages.delete(id); // purge le cache mémoire (fallback quota)
   // nettoyer les images associées
   const imgStore = await tx(STORE_IMAGES, 'readwrite');
   const range = IDBKeyRange.bound(`${id}::`, `${id}::￿`);
@@ -127,6 +136,7 @@ export async function deleteProfile(id) {
         resolve();
       }
     };
+    req.onerror = () => resolve(); // ne jamais laisser l'await pendant à vie
   });
   // Révoquer tous les objectURL en cache pour ces images
   try {
@@ -226,9 +236,19 @@ export async function getProfileImages(profileId) {
 export async function deleteImage(key) {
   const store = await tx(STORE_IMAGES, 'readwrite');
   await reqToPromise(store.delete(key));
+  // Purger aussi le cache mémoire (fallback quota Safari privé), sinon
+  // getProfileImages refusionne la copie mémoire → l'image « supprimée »
+  // réapparaît et est re-poussée au cloud.
+  const pid = String(key).split('::')[0];
+  const list = memoryImages.get(pid);
+  if (list) {
+    const filtered = list.filter(it => it.key !== key);
+    if (filtered.length) memoryImages.set(pid, filtered); else memoryImages.delete(pid);
+  }
 }
 
 export async function deleteProfileImages(profileId) {
+  memoryImages.delete(profileId); // purge le cache mémoire (voir deleteImage)
   const imgStore = await tx(STORE_IMAGES, 'readwrite');
   const range = IDBKeyRange.bound(`${profileId}::`, `${profileId}::￿`);
   const req = imgStore.openCursor(range);
@@ -244,6 +264,7 @@ export async function deleteProfileImages(profileId) {
         resolve();
       }
     };
+    req.onerror = () => resolve(); // ne jamais laisser l'await pendant à vie
   });
   // Invalider les objectURLs en cache
   try {
@@ -271,6 +292,7 @@ export async function setMeta(key, value) {
  * (ce n'est pas une suppression volontaire de profils, juste une réadoption cloud).
  */
 export async function clearAllProfilesAndImages() {
+  memoryImages.clear(); // purge le cache mémoire (fallback quota)
   const db = await openDB();
   const t = db.transaction([STORE_PROFILES, STORE_IMAGES], 'readwrite');
   t.objectStore(STORE_PROFILES).clear();
@@ -409,10 +431,27 @@ export async function importAll(data, { replace = false } = {}) {
     await bulkSaveProfiles(data.profiles);
   }
   if (data.images?.length) {
-    const store = await tx(STORE_IMAGES, 'readwrite');
+    // On convertit TOUS les blobs AVANT d'ouvrir la transaction : base64ToBlob
+    // fait un `await fetch(dataURL)` (frontière de tâche) qui ferait s'auto-
+    // commit une transaction IDB ouverte trop tôt → TransactionInactiveError
+    // dès le 1er put (l'import d'images d'un backup ne marchait jamais).
+    const records = [];
     for (const img of data.images) {
-      const blob = await base64ToBlob(img.data, img.type);
-      store.put({ key: img.key, profileId: img.profileId, index: img.index, blob, type: img.type, size: blob.size, addedAt: Date.now() });
+      try {
+        const blob = await base64ToBlob(img.data, img.type);
+        records.push({ key: img.key, profileId: img.profileId, index: img.index, blob, type: img.type, size: blob.size, addedAt: Date.now() });
+      } catch (e) { console.warn('[store] image backup illisible, ignorée:', img.key, e.message); }
+    }
+    if (records.length) {
+      const db = await openDB();
+      await new Promise((resolve, reject) => {
+        const t = db.transaction(STORE_IMAGES, 'readwrite');
+        const store = t.objectStore(STORE_IMAGES);
+        for (const rec of records) store.put(rec);
+        t.oncomplete = () => resolve();
+        t.onerror = () => reject(t.error);
+        t.onabort = () => reject(t.error || new Error('tx abort'));
+      });
     }
   }
 }

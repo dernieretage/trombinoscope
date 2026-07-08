@@ -1,6 +1,6 @@
 // Service worker — network-first pour les pages HTML (évite les ghost old data
 // après déploiement), cache-first pour CSS/JS statiques avec version-busting.
-const VERSION = 'trombinoscope-v57';
+const VERSION = 'trombinoscope-v58';
 const ASSETS = [
   './',
   './index.html',
@@ -54,6 +54,7 @@ self.addEventListener('fetch', (e) => {
     // Pages met max-age=600) : sinon un nouvel app.js pouvait charger un ancien
     // cloud.js/store.js resté en cache HTTP jusqu'à 10 min → modules ES
     // incompatibles = page blanche. On veut TOUJOURS la version réseau fraîche.
+    const isNav = req.mode === 'navigate' || req.destination === 'document';
     let fresh;
     try { fresh = new Request(req, { cache: 'reload' }); } catch { fresh = req; }
     e.respondWith(
@@ -63,7 +64,17 @@ self.addEventListener('fetch', (e) => {
           caches.open(VERSION).then(c => c.put(req, copy)).catch(() => {});
         }
         return res;
-      }).catch(() => caches.match(req, { ignoreSearch: false }).then(c => c || caches.match('./index.html')))
+      }).catch(async () => {
+        // Hors-ligne : match exact (URL versionnée ?v=NN, cache runtime), puis
+        // en ignorant la query (precache non versionné). Pour un JS/CSS on ne
+        // renvoie JAMAIS index.html (HTML pour un module = « MIME text/html »
+        // → page blanche) : on renvoie une vraie erreur. index.html n'est un
+        // repli que pour une navigation.
+        const hit = (await caches.match(req)) || (await caches.match(req, { ignoreSearch: true }));
+        if (hit) return hit;
+        if (isNav) return (await caches.match('./index.html')) || Response.error();
+        return new Response('/* offline */', { status: 503, statusText: 'Offline', headers: { 'Content-Type': 'text/plain' } });
+      })
     );
     return;
   }
