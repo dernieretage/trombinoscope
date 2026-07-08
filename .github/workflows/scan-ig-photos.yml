@@ -1,0 +1,43 @@
+name: Scan photos Instagram
+
+on:
+  schedule:
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: scan-ig-photos
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recuperer gh-pages (site + donnees cloud + script)
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 0
+
+      - name: Installer Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Recuperer les photos Instagram manquantes
+        run: node scripts/scan-ig-photos.mjs
+
+      - name: Publier les changements
+        run: |
+          if [ -n "$(git status --porcelain data/cloud)" ]; then
+            git config user.name  "IG Photo Robot"
+            git config user.email "actions@github.com"
+            git add data/cloud
+            git commit -m "Robot IG : photos de profil mises a jour"
+            git push
+          else
+            echo "Aucun changement."
+          fi
