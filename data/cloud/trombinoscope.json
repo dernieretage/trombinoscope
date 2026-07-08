@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "exportedAt": "2026-07-08T10:56:59.845Z",
+  "exportedAt": "2026-07-08T11:00:22.773Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -327,7 +327,6 @@
     {
       "id": "p_4x2oh7ch9mrbymmtv",
       "name": "Huaskar",
-      "profession": "Chorégraphe",
       "instagram": "huaskar",
       "phone": "",
       "email": "",
@@ -337,8 +336,11 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-07-08T10:53:44.083Z",
-      "updatedAt": "2026-07-08T10:54:26.028Z",
-      "bio": "Welcome back to Instagram. Sign in to check out what your friends, family & interests have been capturing & sharing around the world."
+      "updatedAt": "2026-07-08T10:59:39.747Z",
+      "bio": "Welcome back to Instagram. Sign in to check out what your friends, family & interests have been capturing & sharing around the world.",
+      "professions": [
+        "Chorégraphe"
+      ]
     },
     {
       "id": "p_5z895evz2moyydw0y",
@@ -416,7 +418,6 @@
     {
       "id": "p_6w0w3cpwomrbymmtv",
       "name": "Charles Hh",
-      "profession": "Chorégraphe",
       "instagram": "charles.hh",
       "phone": "",
       "email": "",
@@ -426,7 +427,10 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-07-08T10:53:44.083Z",
-      "updatedAt": "2026-07-08T10:53:44.084Z"
+      "updatedAt": "2026-07-08T10:59:39.748Z",
+      "professions": [
+        "Chorégraphe"
+      ]
     },
     {
       "id": "p_7dq3cb7yzmoyydw0y",
@@ -548,7 +552,6 @@
     {
       "id": "p_a16q0n4uqmrbymmtv",
       "name": "Robinsoncassarino",
-      "profession": "Chorégraphe",
       "instagram": "robinsoncassarino",
       "phone": "",
       "email": "",
@@ -558,7 +561,10 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-07-08T10:53:44.083Z",
-      "updatedAt": "2026-07-08T10:53:44.084Z"
+      "updatedAt": "2026-07-08T10:59:39.751Z",
+      "professions": [
+        "Chorégraphe"
+      ]
     },
     {
       "id": "p_a1ac1jxavmoyydw0y",
@@ -683,7 +689,6 @@
     {
       "id": "p_berjkiebnmrbymmtv",
       "name": "Mariana Benenge",
-      "profession": "Chorégraphe",
       "instagram": "mariana_benenge",
       "phone": "",
       "email": "",
@@ -693,8 +698,11 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-07-08T10:53:44.083Z",
-      "updatedAt": "2026-07-08T10:54:54.448Z",
-      "bio": "Welcome back to Instagram. Sign in to check out what your friends, family & interests have been capturing & sharing around the world."
+      "updatedAt": "2026-07-08T10:59:39.751Z",
+      "bio": "Welcome back to Instagram. Sign in to check out what your friends, family & interests have been capturing & sharing around the world.",
+      "professions": [
+        "Chorégraphe"
+      ]
     },
     {
       "id": "p_bszc8e3vpmoyydw0y",
@@ -772,7 +780,6 @@
     {
       "id": "p_c65v78omnmrbymmtv",
       "name": "Damienjalet",
-      "profession": "Chorégraphe",
       "instagram": "damienjalet",
       "phone": "",
       "email": "",
@@ -782,8 +789,11 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-07-08T10:53:44.083Z",
-      "updatedAt": "2026-07-08T10:56:51.085Z",
-      "bio": "Welcome back to Instagram. Sign in to check out what your friends, family & interests have been capturing & sharing around the world."
+      "updatedAt": "2026-07-08T10:59:39.751Z",
+      "bio": "Welcome back to Instagram. Sign in to check out what your friends, family & interests have been capturing & sharing around the world.",
+      "professions": [
+        "Chorégraphe"
+      ]
     },
     {
       "id": "p_cjjh8x7usmoyydw0y",
@@ -1327,7 +1337,6 @@
     {
       "id": "p_r2xzc3b1omrbymmtv",
       "name": "Moonsrodin",
-      "profession": "Chorégraphe",
       "instagram": "moonsrodin",
       "phone": "",
       "email": "",
@@ -1337,8 +1346,11 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-07-08T10:53:44.083Z",
-      "updatedAt": "2026-07-08T10:55:15.175Z",
-      "bio": "7,456 Followers, 1,207 Following, 66 Posts - See Instagram photos and videos from Mounir Amhiln (@moonsrodin)"
+      "updatedAt": "2026-07-08T10:59:39.753Z",
+      "bio": "7,456 Followers, 1,207 Following, 66 Posts - See Instagram photos and videos from Mounir Amhiln (@moonsrodin)",
+      "professions": [
+        "Chorégraphe"
+      ]
     },
     {
       "id": "p_rm2c435lxmoyydw0y",
@@ -1373,7 +1385,6 @@
     {
       "id": "p_ryqfowql9mrbymmtv",
       "name": "Nicolas Huchard",
-      "profession": "Chorégraphe",
       "instagram": "nicolas_huchard",
       "phone": "",
       "email": "",
@@ -1383,7 +1394,10 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-07-08T10:53:44.083Z",
-      "updatedAt": "2026-07-08T10:53:44.084Z"
+      "updatedAt": "2026-07-08T10:59:39.754Z",
+      "professions": [
+        "Chorégraphe"
+      ]
     },
     {
       "id": "p_ryqw4yxmfmoyydw0y",
