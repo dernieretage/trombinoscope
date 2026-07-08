@@ -13,7 +13,15 @@
 // ============================================================================
 
 import { readFileSync, writeFileSync, readdirSync, unlinkSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
+
+// Empreintes de logos/placeholders Instagram connus (à supprimer s'ils ont été
+// stockés par erreur avant le filtre anti-logo). md5 du champ `data`.
+const KNOWN_LOGO_HASHES = new Set([
+  '50d6dad630ef6b2edd84bb3315c08406', // logo IG (PNG) partagé par plusieurs profils
+]);
+const md5 = (s) => createHash('md5').update(s).digest('hex');
 
 const CLOUD_DIR = join(process.cwd(), 'data', 'cloud');
 const MANIFEST = join(CLOUD_DIR, 'trombinoscope.json');
@@ -123,13 +131,27 @@ function writeCloud(manifest, allImages, oldChunkFiles) {
 async function main() {
   const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'));
   const profiles = manifest.profiles || [];
-  const { images: allImages, files: oldChunkFiles } = readAllImages();
+  let { images: allImages, files: oldChunkFiles } = readAllImages();
+
+  // --- PASSE 1 : nettoyer les logos/placeholders stockés par erreur ---
+  // Un logo est : (a) un hash connu, ou (b) une image dont le data EXACT est
+  // partagé par ≥2 profils (les vraies photos sont uniques).
+  const hashCount = new Map();
+  for (const im of allImages) { const h = md5(im.data); hashCount.set(h, (hashCount.get(h) || 0) + 1); }
+  const before = allImages.length;
+  allImages = allImages.filter((im) => {
+    const h = md5(im.data);
+    const isLogo = KNOWN_LOGO_HASHES.has(h) || hashCount.get(h) > 1;
+    return !isLogo;
+  });
+  const removed = before - allImages.length;
+  if (removed) console.log(`Logos supprimés : ${removed}`);
 
   const hasImage = new Set(allImages.map((im) => im.profileId));
   const candidates = profiles.filter((p) => p && p.id && p.instagram && !hasImage.has(p.id));
 
-  console.log(`Profils : ${profiles.length} | avec photo : ${hasImage.size} | sans photo & avec IG : ${candidates.length}`);
-  if (!candidates.length) { console.log('Rien à faire.'); return; }
+  console.log(`Profils : ${profiles.length} | avec vraie photo : ${hasImage.size} | à récupérer : ${candidates.length}`);
+  if (!candidates.length && !removed) { console.log('Rien à faire.'); return; }
 
   const todo = candidates.slice(0, MAX_PER_RUN);
   let added = 0;
@@ -148,11 +170,11 @@ async function main() {
     await sleep(DELAY_MS);
   }
 
-  if (added > 0) {
+  if (added > 0 || removed > 0) {
     writeCloud(manifest, allImages, oldChunkFiles);
-    console.log(`\n${added} photo(s) ajoutée(s). Cloud réécrit : ${manifest.imageChunks} chunks, ${manifest.totalImages} images.`);
+    console.log(`\n${removed} logo(s) retiré(s), ${added} photo(s) ajoutée(s). Cloud : ${manifest.imageChunks} chunks, ${manifest.totalImages} images.`);
   } else {
-    console.log('\nAucune photo récupérée cette fois (comptes privés/introuvables ou rate-limit). Nouvelle tentative au prochain passage.');
+    console.log('\nAucun changement (comptes privés/introuvables ou rate-limit). Nouvelle tentative au prochain passage.');
   }
 }
 
