@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "exportedAt": "2026-07-08T10:54:23.513Z",
+  "exportedAt": "2026-07-08T10:54:54.765Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -337,7 +337,8 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-07-08T10:53:44.083Z",
-      "updatedAt": "2026-07-08T10:53:44.084Z"
+      "updatedAt": "2026-07-08T10:54:26.028Z",
+      "bio": "Welcome back to Instagram. Sign in to check out what your friends, family & interests have been capturing & sharing around the world."
     },
     {
       "id": "p_5z895evz2moyydw0y",
@@ -692,7 +693,8 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-07-08T10:53:44.083Z",
-      "updatedAt": "2026-07-08T10:53:44.084Z"
+      "updatedAt": "2026-07-08T10:54:54.448Z",
+      "bio": "Welcome back to Instagram. Sign in to check out what your friends, family & interests have been capturing & sharing around the world."
     },
     {
       "id": "p_bszc8e3vpmoyydw0y",
@@ -840,9 +842,8 @@
       "id": "p_djahu5zjpmoyydw0y",
       "name": "Andrea Colace",
       "professions": [
-        "Styliste",
         "Fashion Editor",
-        "Producer"
+        "Styliste"
       ],
       "instagram": "andrea_colace",
       "phone": "",
@@ -860,8 +861,9 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-12T15:12:00.382Z",
-      "agency": "WM Management (Milan)"
+      "updatedAt": "2026-07-08T10:54:46.047Z",
+      "agency": "WM Management (Milan)",
+      "projects": ""
     },
     {
       "id": "p_eh8ck7pzwmoyydw0y",
@@ -1793,5 +1795,5 @@
     }
   ],
   "imageChunks": 28,
-  "totalImages": 97
+  "totalImages": 99
 }
