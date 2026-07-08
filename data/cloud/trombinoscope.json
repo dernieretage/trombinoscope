@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "exportedAt": "2026-07-08T09:55:44.496Z",
+  "exportedAt": "2026-07-08T10:34:16.744Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -126,6 +126,21 @@
       "createdAt": "2026-05-02T23:06:31.138Z",
       "updatedAt": "2026-05-12T15:12:00.382Z",
       "agency": "WÜL Collective"
+    },
+    {
+      "id": "p_16504ggzcmrbxxa87",
+      "name": "Valentinpeoch",
+      "profession": "Assistant réalisateur",
+      "instagram": "valentinpeoch",
+      "phone": "",
+      "email": "",
+      "website": "",
+      "location": "",
+      "tags": [],
+      "notes": "",
+      "status": "a_contacter",
+      "createdAt": "2026-07-08T10:34:01.351Z",
+      "updatedAt": "2026-07-08T10:34:01.352Z"
     },
     {
       "id": "p_2bh1evkcsmoyydw0y",
