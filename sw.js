@@ -1,6 +1,6 @@
 // Service worker — network-first pour les pages HTML (évite les ghost old data
 // après déploiement), cache-first pour CSS/JS statiques avec version-busting.
-const VERSION = 'trombinoscope-v48';
+const VERSION = 'trombinoscope-v49';
 const ASSETS = [
   './',
   './index.html',
@@ -40,9 +40,16 @@ self.addEventListener('fetch', (e) => {
   // bypass pour autres origines (Google Fonts, GitHub API, etc.) — réseau direct
   if (url.origin !== location.origin) return;
 
-  // Navigations (HTML) → network-first : évite les "ghost old UI" après deploy.
-  // Si offline, fallback sur le cache.
-  if (req.mode === 'navigate' || req.destination === 'document') {
+  // HTML + JS + CSS + manifest → NETWORK-FIRST : on prend toujours la version
+  // fraîche du serveur, le cache ne sert que de secours hors-ligne. Ça élimine
+  // définitivement le risque de "modules JS incompatibles servis depuis le
+  // cache" (nouveau app.js + ancien cloud.js caché = page blanche).
+  const isCode = req.mode === 'navigate' || req.destination === 'document'
+    || req.destination === 'script' || req.destination === 'style'
+    || req.destination === 'manifest'
+    || /\.(?:js|mjs|css|webmanifest)(?:\?|$)/.test(url.pathname + url.search);
+
+  if (isCode) {
     e.respondWith(
       fetch(req).then(res => {
         if (res.ok) {
@@ -50,29 +57,16 @@ self.addEventListener('fetch', (e) => {
           caches.open(VERSION).then(c => c.put(req, copy)).catch(() => {});
         }
         return res;
-      }).catch(() => caches.match(req).then(c => c || caches.match('./index.html')))
+      }).catch(() => caches.match(req, { ignoreSearch: false }).then(c => c || caches.match('./index.html')))
     );
     return;
   }
 
-  // Assets statiques (CSS/JS/manifest) : cache-first avec MAJ en background.
-  // ignoreSearch:false → respecte ?v=xxx pour bust le cache.
+  // Autres (images, etc.) : cache-first, simple.
   e.respondWith(
-    caches.match(req, { ignoreSearch: false }).then(cached => {
-      if (cached) {
-        // Stale-while-revalidate : revalider en background sans bloquer
-        fetch(req).then(res => {
-          if (res.ok) caches.open(VERSION).then(c => c.put(req, res));
-        }).catch(() => {});
-        return cached;
-      }
-      return fetch(req).then(res => {
-        if (res.ok && (req.destination === 'script' || req.destination === 'style' || req.destination === 'manifest')) {
-          const copy = res.clone();
-          caches.open(VERSION).then(c => c.put(req, copy)).catch(() => {});
-        }
-        return res;
-      }).catch(() => caches.match('./index.html'));
-    })
+    caches.match(req).then(cached => cached || fetch(req).then(res => {
+      if (res.ok) { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)).catch(() => {}); }
+      return res;
+    }).catch(() => caches.match('./index.html')))
   );
 });
