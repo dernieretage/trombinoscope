@@ -1068,11 +1068,13 @@ dialog::backdrop { background: rgba(0,0,0,0); transition: background var(--t-mid
 /* ===== VERROUILLAGE DU SCROLL DE FOND quand un dialog est ouvert =====
    Empêche le geste tactile de scroller la page derrière la modale (bug mobile
    + web). :has() est supporté par tous les navigateurs actuels (Safari 15.4+).
-   Une classe .modal-open est aussi posée en JS comme filet de sécurité. */
+   Une classe .modal-open est aussi posée en JS comme filet de sécurité.
+   NB : PAS de touch-action:none — ça cascadait sur le conteneur défilable
+   interne et bloquait le geste de remontée une fois arrivé en bas de fiche.
+   overflow:hidden (+ overscroll-behavior:contain sur la zone interne) suffit. */
 html:has(dialog[open]),
 html.modal-open, html.modal-open body {
   overflow: hidden;
-  touch-action: none;
 }
 
 dialog[open]::backdrop { background: rgba(0,0,0,.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
