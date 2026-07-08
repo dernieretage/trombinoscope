@@ -71,32 +71,68 @@ async function microlinkGet(url) {
   return j?.data || null;
 }
 
+// ============= DÉTECTION IMAGE GÉNÉRIQUE / LOGO =============
+// Instagram sert de plus en plus un mur de connexion dont l'og:image est le
+// LOGO Instagram (parfois en data:image base64). On refuse ces images pour ne
+// jamais stocker "le gros logo" — mieux vaut le bel avatar dégradé + initiales.
+export function isGenericIgImage(url) {
+  if (!url) return true;
+  // data:image base64 = quasi toujours le logo IG renvoyé par le mur de login
+  if (/^data:/i.test(url)) return true;
+  return (
+    /static\.cdninstagram\.com\/rsrc/i.test(url) ||
+    /static\.cdninstagram\.com\/r\//i.test(url) ||
+    /\/rsrc\.php/i.test(url) ||
+    /facebook\.com\/[a-z]\//i.test(url) ||
+    /\.(svg|gif)(\?|$)/i.test(url) ||
+    /apple-touch-icon|favicon/i.test(url) ||
+    /instagram\.com\/static\//i.test(url) ||
+    /default[_-]?(profile|avatar|placeholder)/i.test(url) ||
+    /dumpor\.io\/images\//i.test(url) // logo Dumpor
+  );
+}
+
 // ============= PHOTO DE PROFIL =============
 
 export async function fetchInstagramProfilePic(handle) {
   const h = cleanHandle(handle);
   if (!h) throw new Error('Handle vide.');
 
-  // Stratégie 1 : Dumpor markdown — extraire CDN dumpor + bio
+  // Stratégie 1 : unavatar.io — service dédié aux avatars. fallback=false → il
+  // renvoie une ERREUR propre (404/4xx) au lieu d'un logo générique si rien trouvé.
+  try {
+    const r = await fetchWithTimeout(`https://unavatar.io/instagram/${h}?fallback=false`, { redirect: 'follow' }, 10000);
+    if (r.ok) {
+      const finalUrl = r.url || `https://unavatar.io/instagram/${h}?fallback=false`;
+      const ct = r.headers.get('content-type') || '';
+      if (ct.startsWith('image/') && !isGenericIgImage(finalUrl)) {
+        return { url: finalUrl, source: 'unavatar', bio: '' };
+      }
+    }
+  } catch (e) { /* fallback */ }
+
+  // Stratégie 2 : Dumpor markdown — extraire CDN dumpor + bio
   try {
     const md = await jinaGet(`https://dumpor.io/v/${h}`, { noCache: true });
     if (!md.includes('not_found') && !md.includes('Error 404')) {
       const dumporCdn = [...new Set(md.match(/https:\/\/cdn\d*\.dumpor\.io\/[a-z]\/[a-f0-9-]+\.(?:jpg|jpeg|png|webp)(?:\?[^\s\)\]"]+)?/gi) || [])];
-      if (dumporCdn.length) {
-        return { url: dumporCdn[0], source: 'dumpor', bio: extractBioFromMarkdown(md) };
+      const realPic = dumporCdn.find(u => !isGenericIgImage(u));
+      if (realPic) {
+        return { url: realPic, source: 'dumpor', bio: extractBioFromMarkdown(md) };
       }
-      // Pas de pic mais peut-être une bio
       const bio = extractBioFromMarkdown(md);
       if (bio) return { url: null, source: 'dumpor-bio-only', bio };
     }
   } catch (e) { /* fallback */ }
 
-  // Stratégie 2 : Microlink sur la page IG (peut retourner logo générique)
+  // Stratégie 3 : Microlink sur la page IG — filtre anti-logo renforcé
   try {
     const data = await microlinkGet(`https://www.instagram.com/${h}/`);
-    if (data?.image?.url && !/static\.cdninstagram\.com\/rsrc|\/rsrc\.php/i.test(data.image.url)) {
+    if (data?.image?.url && !isGenericIgImage(data.image.url)) {
       return { url: data.image.url, source: 'microlink', bio: data.description || '' };
     }
+    // Même si l'image est un logo, on peut récupérer la bio
+    if (data?.description) return { url: null, source: 'microlink-bio-only', bio: data.description };
   } catch (e) { /* fallback */ }
 
   return { url: null, source: 'none', bio: '' };
@@ -147,18 +183,7 @@ export async function fetchPostImage(postUrl) {
   const data = await microlinkGet(postUrl);
   const img = data?.image?.url;
   if (!img) throw new Error('Microlink: pas d\'image trouvée');
-  // Filtrer les logos / placeholders Instagram (multiples patterns)
-  const isGeneric = (
-    /static\.cdninstagram\.com\/rsrc/i.test(img) ||
-    /static\.cdninstagram\.com\/r\//i.test(img) ||
-    /\/rsrc\.php/i.test(img) ||
-    /facebook\.com\/[a-z]\//i.test(img) ||
-    /\.(svg|gif)$/i.test(img) ||
-    /apple-touch-icon/i.test(img) ||
-    /default[_-]?(profile|avatar|placeholder)/i.test(img) ||
-    img.includes('cdninstagram.com/rsrc.php')
-  );
-  if (isGeneric) {
+  if (isGenericIgImage(img)) {
     throw new Error('Image générique IG (post peut-être supprimé)');
   }
   return { url: img, caption: data.description || '', date: data.date };
