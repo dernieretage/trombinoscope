@@ -530,6 +530,18 @@ export async function importAllChunked(filesByName, { replace = true, mergeByUpd
       if (remote) stats.localNewer++;
       remoteById.delete(id); // ne pas réimporter un profil supprimé
     }
+    // #11 : re-lire les tombstones juste avant d'écrire — une suppression
+    // concurrente (addTombstone) survenue PENDANT ce long merge serait sinon
+    // écrasée par cette écriture (le profil ressusciterait au prochain pull).
+    const freshTombs = await getTombstones().catch(() => []);
+    for (const t of freshTombs) {
+      if (!t || !t.id) continue;
+      const prev = tombById.get(t.id);
+      if (!prev || (Date.parse(t.deletedAt) || 0) > (Date.parse(prev.deletedAt) || 0)) tombById.set(t.id, t);
+      // ne pas réimporter un profil fraîchement supprimé pendant ce merge
+      remoteById.delete(t.id);
+      localById.delete(t.id);
+    }
     await setMeta('tombstones', pruneTombstones([...tombById.values()]));
 
     // 3. Merge des profils : le updatedAt distant est PRÉSERVÉ tel quel.
@@ -550,6 +562,14 @@ export async function importAllChunked(filesByName, { replace = true, mergeByUpd
           stats.remoteApplied++;
         } else if (localTs > remoteTs) {
           stats.localNewer++;
+        } else if (JSON.stringify(remote) !== JSON.stringify(local)) {
+          // updatedAt ÉGAUX mais contenus différents (deux édits dans la même
+          // ms, ou updatedAt manquant/invalide → 0 des deux côtés) : sans
+          // départage, chaque appareil gardait sa version À VIE (divergence
+          // silencieuse). On tranche déterministiquement pour le DISTANT →
+          // tous convergent (et localNewer non incrémenté : pas de push inutile).
+          toSave.push(remote);
+          stats.remoteApplied++;
         }
       }
     }

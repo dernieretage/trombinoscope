@@ -13,14 +13,20 @@ import { getMeta, setMeta } from './store.js';
 
 const META_KEY = 'ai_anthropic_key';
 const META_MODEL = 'ai_model';
-const DEFAULT_MODEL = 'claude-sonnet-4-6';
+const DEFAULT_MODEL = 'claude-sonnet-5'; // ID valide (l'ancien 'claude-sonnet-4-6' n'existe pas → scan IA en erreur)
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const JINA_BASE = 'https://r.jina.ai/';
 
 export async function getAiKey() { return await getMeta(META_KEY); }
 export async function setAiKey(key) { await setMeta(META_KEY, key || null); }
-export async function getAiModel() { return (await getMeta(META_MODEL)) || DEFAULT_MODEL; }
-export async function setAiModel(m) { await setMeta(META_MODEL, m || DEFAULT_MODEL); }
+const VALID_MODELS = new Set(['claude-sonnet-5', 'claude-opus-4-8', 'claude-haiku-4-5-20251001']);
+export async function getAiModel() {
+  const m = await getMeta(META_MODEL);
+  // Un modèle périmé stocké (ex. 'claude-sonnet-4-6' d'une version passée) est
+  // invalide sur l'API → on retombe sur un ID valide.
+  return (m && VALID_MODELS.has(m)) ? m : DEFAULT_MODEL;
+}
+export async function setAiModel(m) { await setMeta(META_MODEL, VALID_MODELS.has(m) ? m : DEFAULT_MODEL); }
 
 export async function isAiConfigured() {
   const k = await getAiKey();

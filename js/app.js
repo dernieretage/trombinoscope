@@ -2034,6 +2034,7 @@ function triggerImport() {
       }
       buildFilterChips();
       render();
+      maybeSchedulePush(); // propager les profils restaurés vers le cloud
       toast('Import terminé.', { type: 'ok' });
     } catch (err) {
       console.error(err);
