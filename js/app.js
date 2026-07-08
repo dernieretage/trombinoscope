@@ -268,13 +268,12 @@ const STATE = {
   // (PRIORITÉ #1 — pas de configuration nécessaire sur les nouveaux appareils)
   doCloudPullAndRefresh({ silent: false, source: 'boot' }).catch((e) => console.warn('[Boot] Cloud auto-pull skipped:', e.message));
 
-  // Helper : ne JAMAIS pull si un dialog d'édition/profile est ouvert (le pull
-  // overwrite STATE.profiles → les modifs en cours seraient perdues).
+  // Helper : ne JAMAIS pull/recharger l'état si UNE modale est ouverte (le pull
+  // réécrit STATE.profiles + re-render → modifs en cours perdues, callbacks
+  // coupés). On bloque pour TOUT dialog ouvert (édition, fiche, IA, réglages…).
   function canPullSafely() {
     if (dirtyState) return false;
-    const editDlg = $('#edit-dialog');
-    const profileDlg = $('#profile-dialog');
-    if (editDlg?.open || profileDlg?.open) return false;
+    if (document.querySelector('dialog[open]')) return false;
     return true;
   }
 

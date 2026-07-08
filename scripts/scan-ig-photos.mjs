@@ -141,7 +141,11 @@ async function main() {
   const before = allImages.length;
   allImages = allImages.filter((im) => {
     const h = md5(im.data);
-    const isLogo = KNOWN_LOGO_HASHES.has(h) || hashCount.get(h) > 1;
+    // Les vraies photos IG sont des JPEG. Un doublon PNG (ou data-URI PNG) =
+    // quasi certainement le logo/placeholder. On ne supprime un doublon que
+    // s'il est PNG, pour ne jamais retirer une vraie photo JPEG partagée.
+    const isPng = /^data:image\/png/i.test(im.data);
+    const isLogo = KNOWN_LOGO_HASHES.has(h) || (hashCount.get(h) > 1 && isPng);
     return !isLogo;
   });
   const removed = before - allImages.length;
