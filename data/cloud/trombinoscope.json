@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "exportedAt": "2026-07-08T14:15:31.383Z",
+  "exportedAt": "2026-07-08T14:15:40.482Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -951,7 +951,6 @@
     {
       "id": "p_iibx2a9uumrc5tots",
       "name": "Jules Simmen",
-      "profession": "Directeur de production",
       "instagram": "julesimmen",
       "phone": "",
       "email": "",
@@ -961,7 +960,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-07-08T14:15:10.576Z",
-      "updatedAt": "2026-07-08T14:15:29.252Z",
+      "updatedAt": "2026-07-08T14:15:31.756Z",
       "professions": [
         "Directeur de production"
       ],
