@@ -12,7 +12,7 @@
 (function () {
   try {
     if (!('serviceWorker' in navigator)) return;
-    var KEY = 'sw_hardreset_v48';
+    var KEY = 'sw_hardreset_v58';
     if (localStorage.getItem(KEY)) return;
     navigator.serviceWorker.getRegistrations().then(function (regs) {
       if (!regs.length) { localStorage.setItem(KEY, '1'); return; }
@@ -57,7 +57,7 @@
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&display=swap" />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&display=swap" />
 
-<link rel="stylesheet" href="styles.css?v=57" />
+<link rel="stylesheet" href="styles.css?v=58" />
 </head>
 <body data-theme="dark">
 
@@ -661,7 +661,7 @@
 </dialog>
 
 <!-- ===== Toast container ===== -->
-<div id="toasts" class="toasts" aria-live="polite" aria-atomic="false"></div>
+<div id="toasts" class="toasts" popover="manual" aria-live="polite" aria-atomic="false"></div>
 
 <!-- ===== Back to top button ===== -->
 <button class="totop" id="totop" type="button" aria-label="Retour en haut" hidden>
@@ -719,6 +719,6 @@
   </article>
 </template>
 
-<script type="module" src="js/app.js?v=57"></script>
+<script type="module" src="js/app.js?v=58"></script>
 </body>
 </html>

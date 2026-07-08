@@ -172,6 +172,9 @@ body.is-ready .boot { opacity: 0; visibility: hidden; pointer-events: none; }
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid var(--line);
+  /* PWA iOS (viewport-fit=cover + status bar translucide) : sans ça, la marque
+     et la recherche passent sous l'encoche/l'horloge. */
+  padding-top: env(safe-area-inset-top, 0);
 }
 .topbar__inner {
   display: grid;
@@ -179,6 +182,8 @@ body.is-ready .boot { opacity: 0; visibility: hidden; pointer-events: none; }
   gap: 14px;
   align-items: center;
   padding: 12px clamp(14px, 2.5vw, 28px);
+  padding-left: max(clamp(14px, 2.5vw, 28px), env(safe-area-inset-left, 0));
+  padding-right: max(clamp(14px, 2.5vw, 28px), env(safe-area-inset-right, 0));
   max-width: 1600px; margin: 0 auto;
 }
 .brand {
@@ -1601,7 +1606,15 @@ dialog[open] .dialog__inner {
   z-index: 200;
   pointer-events: none;
   width: min(420px, calc(100vw - 32px));
+  /* #toasts est un popover (rendu top-layer, au-dessus des modales) : on
+     neutralise les styles UA par défaut des popovers (inset:0 / margin:auto /
+     bordure / fond / padding) qui casseraient la position et dessineraient une
+     boîte. Inoffensif quand l'API popover n'existe pas. */
+  top: auto; right: auto; margin: 0;
+  border: 0; padding: 0; background: transparent; color: inherit;
+  overflow: visible; max-width: none; max-height: none;
 }
+.toasts:popover-open { display: flex; }
 .toast {
   background: var(--bg-elev);
   border: 1px solid var(--line-strong);

@@ -118,6 +118,19 @@ export function escapeHTML(s) {
 }
 export function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
+// Assainit une URL destinée à un href (anti-XSS stocké : un site saisi en
+// `javascript:...` s'exécuterait au clic, et se propage entre appareils via la
+// sync). Autorise http(s)/mailto/tel ; préfixe https:// si aucun schéma ;
+// refuse tout le reste (javascript:, data:, vbscript:, file:…) → ''.
+export function safeExternalUrl(url) {
+  const s = String(url ?? '').trim();
+  if (!s) return '';
+  if (/^(https?:|mailto:|tel:)/i.test(s)) return s;
+  // pas de schéma explicite (ex. "monsite.com") → on suppose https
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(s)) return 'https://' + s;
+  return ''; // schéma présent mais non autorisé → on rejette
+}
+
 // Debounce utilitaire
 export function debounce(fn, ms = 180) {
   let t;
@@ -147,7 +160,11 @@ export function fmtDate(iso) {
 
 // Redimensionne / compresse une image (avant stockage)
 export async function downscaleImage(file, { maxDim = 1400, quality = 0.85 } = {}) {
-  const bmp = await createImageBitmap(file);
+  // imageOrientation:'from-image' → applique l'EXIF (photos portrait iPhone
+  // sinon dessinées couchées puis figées à 90° après recompression).
+  let bmp;
+  try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+  catch { bmp = await createImageBitmap(file); }
   try {
     const ratio = Math.min(1, maxDim / Math.max(bmp.width, bmp.height));
     const w = Math.round(bmp.width * ratio);

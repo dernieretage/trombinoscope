@@ -332,10 +332,19 @@ const STATE = {
     }
   });
 
-  setupAutoSync().then(async (ready) => {
+  // Gist (legacy) : activé UNIQUEMENT si un token Gist existe ET que le cloud
+  // public n'est pas configuré. Sinon (appareil migré vers le cloud), le pull
+  // Gist figé ressuscitait de vieux profils supprimés et tournait en même temps
+  // que le pull cloud au boot (deux merges entrelacés lisant/écrivant les mêmes
+  // profils et la même meta tombstones).
+  (async () => {
+    try {
+      const [syncCfg, cloudCfg] = await Promise.all([getSyncConfig(), getCloudConfig()]);
+      if (syncCfg.token && !cloudCfg.token) await setupAutoSync();
+    } catch {}
     updateSyncPill();
     updateSaveButton();
-  }).catch(() => {});
+  })();
   // PWA — enregistre le SW et reload auto quand une nouvelle version active
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -1198,6 +1207,9 @@ async function openProfileDialog(id) {
     onDeleteImage: async (key) => {
       await deleteImage(key);
       revokeObjectURL(key);
+      profile.updatedAt = new Date().toISOString();
+      await saveProfile(profile);
+      maybeSchedulePush();
       const imgs = await getProfileImages(profile.id);
       STATE.imagesByProfile.set(profile.id, imgs);
       openProfileDialog(profile.id);
@@ -1205,7 +1217,12 @@ async function openProfileDialog(id) {
     },
   });
 
-  if (!dlg.open) dlg.showModal();
+  const wasOpen = dlg.open;
+  if (!wasOpen) dlg.showModal();
+  // Toujours (ré)ouvrir la fiche EN HAUT : showModal() donne le focus au 1er
+  // élément et le navigateur y défilait (fiche ouverte à ~mi-hauteur). On force
+  // aussi le reset après un re-render (upload/suppression d'image, nav ◀▶).
+  inner.scrollTop = 0;
 }
 
 function navigateProfile(direction) {
@@ -1240,6 +1257,7 @@ async function duplicateProfile(p) {
     updatedAt: undefined,
   };
   await saveProfile(dup);
+  maybeSchedulePush();
   STATE.profiles.push(dup);
   buildFilterChips();
   render();
@@ -1726,6 +1744,15 @@ async function addImagesToProfile(profile, files) {
       }
     }
   }
+  // CRUCIAL : une image ajoutée doit se synchroniser. On bump l'updatedAt du
+  // profil (saveProfile) → le merge le voit "localNewer" → push-back qui pousse
+  // les chunks d'images. Sans ça, les photos restaient locales (le merge ne
+  // regarde que les profils, jamais les images) et « Sauvegarder » disait déjà
+  // synchronisé. Couvre les 3 chemins d'ajout (bouton, drag&drop, collage).
+  if (saved > 0) {
+    await saveProfile(profile);
+    maybeSchedulePush();
+  }
   if (quotaHit) {
     toast(`Stockage local plein. ${saved}/${files.length} images sauvegardées. Supprimez d'anciennes images puis réessayez.`, {
       type: 'err', timeout: 7000,
@@ -2120,6 +2147,7 @@ async function doReSeed() {
     }));
   if (newOnes.length) {
     await bulkSaveProfiles(newOnes);
+    maybeSchedulePush();
     STATE.profiles.push(...newOnes);
     buildFilterChips();
     render();
@@ -2129,20 +2157,31 @@ async function doReSeed() {
 
 async function doReset() {
   const ok = await confirmDialog({
-    title: 'Effacer toutes les données ?',
-    text: 'Tous les profils, images et notes seront supprimés définitivement. Cette action est irréversible.',
-    okLabel: 'Tout effacer',
+    title: 'Réinitialiser cet appareil ?',
+    text: 'Efface les données stockées sur CET appareil puis les recharge depuis le cloud. Les données partagées du cloud ne sont pas supprimées (utilisez la suppression profil par profil pour ça).',
+    okLabel: 'Réinitialiser',
   });
   if (!ok) return;
-  for (const p of STATE.profiles) {
-    await deleteProfile(p.id);
-  }
-  await setMeta('seeded', false);
+  // Réinitialisation LOCALE only. On efface tout d'un bloc (pas la boucle
+  // deleteProfile qui créait N tombstones → push d'un manifest vide bloqué en
+  // boucle EMPTY_BLOCKED toutes les 60 s). Pas de tombstones, pas de dirty →
+  // aucun push destructif ; le cloud partagé reste intact et on le recharge.
+  const { clearAllProfilesAndImages } = await import('./store.js');
+  await clearAllProfilesAndImages();
+  await setMeta('tombstones', []);
+  await setMeta('cloud_local_dirty', false);
+  await setMeta('cloud_last_hash', '');       // force un vrai re-pull propre
+  await setMeta('cloud_chunk_state', {});
+  await setMeta('seeded', true);              // ne pas re-semer par-dessus le cloud
+  markClean();
   STATE.profiles = [];
   STATE.imagesByProfile.clear();
   buildFilterChips();
   render();
-  toast('Toutes les données ont été effacées.', { type: 'warn' });
+  toast('Appareil réinitialisé — rechargement depuis le cloud…', { type: 'info', timeout: 3000 });
+  await doCloudPullAndRefresh({ silent: true, force: true, source: 'manual' }).catch(() => {});
+  render();
+  window.__updateIgBulkCount?.();
 }
 
 // ============= KEYBOARD =============
@@ -2171,6 +2210,7 @@ function onKeydown(e) {
     if (STATE.current) {
       STATE.current.status = STATE.current.status === 'favori' ? '' : 'favori';
       saveProfile(STATE.current).then(() => {
+        maybeSchedulePush();
         openProfileDialog(STATE.current.id);
         render();
         toast(STATE.current.status === 'favori' ? '⭐ Ajouté aux favoris' : 'Retiré des favoris', { type: 'ok' });
@@ -2882,6 +2922,7 @@ document.addEventListener('click', async (e) => {
     }
     Object.assign(lastAiProfile, updates);
     await saveProfile(lastAiProfile);
+    maybeSchedulePush();
     buildFilterChips();
     buildProfessionDatalist();
     render();
@@ -3051,12 +3092,14 @@ function showContextMenu(profileId, x, y) {
     else if (act === 'fav') {
       p.status = p.status === 'favori' ? '' : 'favori';
       await saveProfile(p);
+      maybeSchedulePush();
       render();
       toast(p.status === 'favori' ? 'Ajouté aux favoris.' : 'Retiré des favoris.', { type: 'ok' });
     }
     else if (act === 'collab') {
       p.status = p.status === 'collabore' ? '' : 'collabore';
       await saveProfile(p);
+      maybeSchedulePush();
       render();
       toast(p.status === 'collabore' ? 'Marqué "Déjà collaboré".' : 'Statut retiré.', { type: 'ok' });
     }
