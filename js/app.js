@@ -58,9 +58,23 @@ const STATE = {
 // ============= INIT =============
 
 (async function init() {
-  // restore prefs
-  const theme = await getMeta('theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-  document.body.dataset.theme = theme;
+  // ===== THÈME ADAPTATIF (suit le système par défaut) =====
+  // Migration one-shot : on efface l'ancien thème forcé pour repasser en "auto"
+  // (l'utilisateur peut toujours forcer clair/sombre via le menu ensuite).
+  if (!(await getMeta('theme_adaptive_v1'))) {
+    await setMeta('theme', null);
+    await setMeta('theme_adaptive_v1', true);
+  }
+  const savedTheme = await getMeta('theme'); // null = mode auto (suit le système)
+  const systemDark = !matchMedia('(prefers-color-scheme: light)').matches;
+  document.body.dataset.theme = savedTheme || (systemDark ? 'dark' : 'light');
+  // Suivre les changements système en direct TANT QUE l'utilisateur n'a pas forcé.
+  try {
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', async (e) => {
+      if (await getMeta('theme')) return; // override manuel actif → ne pas toucher
+      document.body.dataset.theme = e.matches ? 'dark' : 'light';
+    });
+  } catch {}
   STATE.view = await getMeta('view') || 'grid';
   STATE.filters.sort = await getMeta('sort') || 'favoris';
   STATE.filters.profession = await getMeta('profession') || 'all';
@@ -605,24 +619,19 @@ function buildSortSelect() {
   });
 }
 
-// Memoized : invalidé si la longueur ou un updatedAt récent change.
-let _profCountCache = null, _profCountKey = null;
+// Recompte direct (O(n), négligeable pour des centaines de profils).
+// PAS de mémoïsation : elle causait un bug où ajouter un métier à un profil
+// non-dernier n'apparaissait pas dans les chips (la clé de cache length+
+// lastUpdatedAt ne changeait pas).
 function professionCounts() {
-  // Clé de cache : longueur + concat des updatedAt (cheap signature)
-  const key = STATE.profiles.length + ':' + (STATE.profiles[STATE.profiles.length - 1]?.updatedAt || '');
-  if (_profCountKey === key && _profCountCache) return _profCountCache;
   const c = {};
   for (const p of STATE.profiles) {
-    for (const pro of (p.professions || [])) {
-      c[pro] = (c[pro] || 0) + 1;
+    for (const pro of profileProfessions(p)) {
+      if (pro) c[pro] = (c[pro] || 0) + 1;
     }
   }
-  _profCountCache = c;
-  _profCountKey = key;
   return c;
 }
-// À appeler si on modifie un profil (force recompte)
-function invalidateProfessionCountsCache() { _profCountCache = null; _profCountKey = null; }
 
 function profileProfessions(p) {
   return p.professions || (p.profession ? [p.profession] : []);
