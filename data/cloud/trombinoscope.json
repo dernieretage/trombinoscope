@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "exportedAt": "2026-07-08T13:35:59.033Z",
+  "exportedAt": "2026-07-08T13:36:01.935Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -485,7 +485,7 @@
     },
     {
       "id": "p_8h0m8495nmrc4cppf",
-      "name": "Totoporchez",
+      "name": "Thomas Porchez",
       "instagram": "totoporchez",
       "phone": "",
       "email": "",
@@ -495,10 +495,14 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-07-08T13:33:58.947Z",
-      "updatedAt": "2026-07-08T13:35:44.174Z",
+      "updatedAt": "2026-07-08T13:34:25.723Z",
       "professions": [
         "Directeur de production"
-      ]
+      ],
+      "rate": "",
+      "agency": "",
+      "lastContact": "",
+      "projects": ""
     },
     {
       "id": "p_9eoiogv1qmp133dhk",
@@ -1830,6 +1834,6 @@
       "deletedAt": "2026-07-08T08:57:36.732Z"
     }
   ],
-  "imageChunks": 29,
-  "totalImages": 111
+  "imageChunks": 30,
+  "totalImages": 122
 }
