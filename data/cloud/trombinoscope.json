@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "exportedAt": "2026-07-08T10:34:16.744Z",
+  "exportedAt": "2026-07-08T10:35:40.606Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -129,8 +129,7 @@
     },
     {
       "id": "p_16504ggzcmrbxxa87",
-      "name": "Valentinpeoch",
-      "profession": "Assistant réalisateur",
+      "name": "Valentin Peoch",
       "instagram": "valentinpeoch",
       "phone": "",
       "email": "",
@@ -140,7 +139,15 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-07-08T10:34:01.351Z",
-      "updatedAt": "2026-07-08T10:34:01.352Z"
+      "updatedAt": "2026-07-08T10:34:42.300Z",
+      "bio": "Welcome back to Instagram. Sign in to check out what your friends, family & interests have been capturing & sharing around the world.",
+      "professions": [
+        "Assistant réalisateur"
+      ],
+      "rate": "",
+      "agency": "",
+      "lastContact": "",
+      "projects": ""
     },
     {
       "id": "p_2bh1evkcsmoyydw0y",
@@ -1679,6 +1686,6 @@
       "deletedAt": "2026-07-08T08:57:36.732Z"
     }
   ],
-  "imageChunks": 27,
-  "totalImages": 88
+  "imageChunks": 28,
+  "totalImages": 97
 }
