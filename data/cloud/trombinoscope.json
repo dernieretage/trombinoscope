@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "exportedAt": "2026-07-08T15:21:05.456Z",
+  "exportedAt": "2026-07-08T15:28:11.690Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -871,7 +871,8 @@
       "name": "Andrea Colace",
       "professions": [
         "Fashion Editor",
-        "Styliste"
+        "Styliste",
+        "Producer"
       ],
       "instagram": "andrea_colace",
       "phone": "",
@@ -889,7 +890,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-07-08T10:54:46.047Z",
+      "updatedAt": "2026-07-08T15:27:52.658Z",
       "agency": "WM Management (Milan)",
       "projects": ""
     },
@@ -1851,6 +1852,6 @@
       "deletedAt": "2026-07-08T08:57:36.732Z"
     }
   ],
-  "imageChunks": 28,
-  "totalImages": 118
+  "imageChunks": 0,
+  "totalImages": 0
 }
