@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "exportedAt": "2026-07-08T11:10:12.205Z",
+  "exportedAt": "2026-07-08T11:23:27.686Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -1783,7 +1783,8 @@
       "professions": [
         "Réalisateur",
         "Photographe",
-        "Directeur de création"
+        "Directeur de création",
+        "Chorégraphe"
       ],
       "instagram": "2tiret",
       "phone": "",
@@ -1802,8 +1803,9 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-05-02T23:06:31.138Z",
-      "updatedAt": "2026-05-12T15:12:00.382Z",
-      "agency": "KO Collective"
+      "updatedAt": "2026-07-08T11:23:16.547Z",
+      "agency": "KO Collective",
+      "projects": ""
     }
   ],
   "tombstones": [
