@@ -29,9 +29,39 @@ const CHUNK_BYTES = 700_000;         // même seuil que l'app (cloud.js pushClou
 const MAX_PER_RUN = 25;              // limite par exécution (rate-limit IG)
 const DELAY_MS = 2500;               // pause entre deux profils
 const IG_APP_ID = '936619743392459'; // App-ID public du web Instagram
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const MAX_CONSEC_429 = 6;            // coupe-circuit : au-delà, l'IP est bloquée
+// Pool de User-Agents réalistes : on en tire un au hasard par requête pour
+// paraître moins robotique (réduit un peu les 429 d'Instagram).
+const UAS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0',
+  'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
+];
+const pickUA = () => UAS[Math.floor(Math.random() * UAS.length)];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// délai de base + jitter (jusqu'à +50%) pour ne pas cadencer mécaniquement
+const jitter = (base) => Math.round(base * (1 + Math.random() * 0.5));
+// mélange (Fisher-Yates) : ordre des candidats différent à chaque run
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+// Erreur qui transporte le status HTTP (pour piloter le backoff sur 429)
+class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
+// fetch avec timeout dur (évite qu'une requête pende indéfiniment le job CI)
+async function fetchT(url, opts = {}, ms = 15000) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ac.signal }); }
+  finally { clearTimeout(t); }
+}
 
 function cleanHandle(h) {
   return String(h || '')
@@ -47,15 +77,16 @@ function isGenericUrl(url) {
   return /\/rsrc\.php|static\.cdninstagram\.com\/r[\/.]|instagram\.com\/static\//i.test(url);
 }
 
-async function fetchProfilePicUrl(handle) {
+// --- Source 1 : API web publique d'Instagram (meilleure qualité, _hd) ---
+// IMPORTANT : Instagram applique une "SecFetch Policy". Node/undici envoie des
+// en-têtes Sec-Fetch-* interprétés comme cross-site → 400. On simule une
+// requête XHR same-origin depuis la page du profil (Referer + Sec-Fetch-Site).
+async function igApiPicUrl(handle) {
   const url = `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(handle)}`;
-  // IMPORTANT : Instagram applique une "SecFetch Policy". Node/undici envoie des
-  // en-têtes Sec-Fetch-* interprétés comme cross-site → 400. On simule une
-  // requête XHR same-origin depuis la page du profil (Referer + Sec-Fetch-Site).
-  const res = await fetch(url, {
+  const res = await fetchT(url, {
     headers: {
       'X-IG-App-ID': IG_APP_ID,
-      'User-Agent': UA,
+      'User-Agent': pickUA(),
       'Accept': '*/*',
       'Accept-Language': 'en-US,en;q=0.9',
       'Referer': `https://www.instagram.com/${handle}/`,
@@ -65,17 +96,40 @@ async function fetchProfilePicUrl(handle) {
       'Sec-Fetch-Dest': 'empty',
     },
   });
-  if (!res.ok) throw new Error(`web_profile_info ${res.status}`);
+  if (!res.ok) throw new HttpError(res.status, `api ${res.status}`);
   const json = await res.json();
   const user = json?.data?.user;
   if (!user) throw new Error('pas de user dans la réponse');
   const pic = user.profile_pic_url_hd || user.profile_pic_url;
   if (!pic || isGenericUrl(pic)) throw new Error('pas de photo exploitable');
-  return { pic, fullName: user.full_name || '' };
+  return pic;
+}
+
+// Résout l'URL de la photo via l'API IG (seule source fiable et gratuite : la
+// page HTML déconnectée ne l'expose plus, et le proxy unavatar est passé
+// payant pour Instagram). Sur 429 (limite parfois transitoire), on retente
+// jusqu'à 3 fois avec une attente croissante. `state.consec429` compte les 429
+// consécutifs pour le coupe-circuit de main().
+async function resolvePicUrl(handle, state) {
+  const waits = [10000, 25000]; // attentes (jitterées) avant chaque ré-essai
+  for (let attempt = 0; attempt <= waits.length; attempt++) {
+    try {
+      const url = await igApiPicUrl(handle);
+      state.consec429 = 0;
+      return { url, via: 'api' };
+    } catch (e) {
+      if (e.status === 429) {
+        state.consec429++;
+        if (attempt < waits.length) { await sleep(jitter(waits[attempt])); continue; }
+      }
+      throw e; // non-429 (privé/introuvable) ou 429 épuisé → on passe au suivant
+    }
+  }
+  throw new Error('inatteignable'); // jamais atteint
 }
 
 async function downloadAsDataUri(picUrl) {
-  const res = await fetch(picUrl, { headers: { 'User-Agent': UA } });
+  const res = await fetchT(picUrl, { headers: { 'User-Agent': pickUA() } }, 20000);
   if (!res.ok) throw new Error(`download ${res.status}`);
   const ct = res.headers.get('content-type') || 'image/jpeg';
   if (!ct.startsWith('image/')) throw new Error(`pas une image (${ct})`);
@@ -157,21 +211,31 @@ async function main() {
   console.log(`Profils : ${profiles.length} | avec vraie photo : ${hasImage.size} | à récupérer : ${candidates.length}`);
   if (!candidates.length && !removed) { console.log('Rien à faire.'); return; }
 
-  const todo = candidates.slice(0, MAX_PER_RUN);
+  // On mélange les candidats : sur les runs planifiés, des profils différents
+  // sont tentés en premier (utile si Instagram limite après quelques requêtes).
+  const todo = shuffle(candidates).slice(0, MAX_PER_RUN);
   let added = 0;
+  const state = { consec429: 0 };
   for (const p of todo) {
+    // Coupe-circuit : si Instagram enchaîne les 429, l'IP du runner est
+    // bloquée pour un moment → inutile d'insister. On s'arrête et on retentera
+    // au prochain passage (dans 3h, souvent avec une IP GitHub différente).
+    if (state.consec429 >= MAX_CONSEC_429) {
+      console.log('\n⚠ Instagram limite cette IP GitHub (429 en série) — arrêt anticipé, nouvelle tentative au prochain passage.');
+      break;
+    }
     const h = cleanHandle(p.instagram);
     if (!h) continue;
     try {
-      const { pic, fullName } = await fetchProfilePicUrl(h);
-      const { dataUri, type } = await downloadAsDataUri(pic);
+      const { url, via } = await resolvePicUrl(h, state);
+      const { dataUri, type } = await downloadAsDataUri(url);
       allImages.push({ key: `${p.id}::0`, profileId: p.id, index: 0, type, data: dataUri });
       added++;
-      console.log(`  ✓ @${h} (${p.name || fullName}) — photo récupérée`);
+      console.log(`  ✓ @${h} (${p.name || ''}) — photo récupérée [${via}]`);
     } catch (e) {
       console.log(`  ✗ @${h} (${p.name || ''}) — ${e.message}`);
     }
-    await sleep(DELAY_MS);
+    await sleep(jitter(DELAY_MS));
   }
 
   if (added > 0 || removed > 0) {
