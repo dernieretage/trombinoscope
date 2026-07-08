@@ -1,6 +1,6 @@
 // Service worker — network-first pour les pages HTML (évite les ghost old data
 // après déploiement), cache-first pour CSS/JS statiques avec version-busting.
-const VERSION = 'trombinoscope-v55';
+const VERSION = 'trombinoscope-v56';
 const ASSETS = [
   './',
   './index.html',
@@ -50,8 +50,14 @@ self.addEventListener('fetch', (e) => {
     || /\.(?:js|mjs|css|webmanifest)(?:\?|$)/.test(url.pathname + url.search);
 
   if (isCode) {
+    // cache:'reload' → on court-circuite le cache HTTP du navigateur (GitHub
+    // Pages met max-age=600) : sinon un nouvel app.js pouvait charger un ancien
+    // cloud.js/store.js resté en cache HTTP jusqu'à 10 min → modules ES
+    // incompatibles = page blanche. On veut TOUJOURS la version réseau fraîche.
+    let fresh;
+    try { fresh = new Request(req, { cache: 'reload' }); } catch { fresh = req; }
     e.respondWith(
-      fetch(req).then(res => {
+      fetch(fresh).then(res => {
         if (res.ok) {
           const copy = res.clone();
           caches.open(VERSION).then(c => c.put(req, copy)).catch(() => {});

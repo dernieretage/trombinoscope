@@ -511,8 +511,12 @@ export async function syncCloud({ reason = 'manual' } = {}) {
     return { skipped: true, reason: 'cooldown après échec push' };
   }
   console.log(`[Cloud] syncCloud (${reason})`);
-  // Pull hash-aware : ne re-télécharge rien si le cloud n'a pas bougé
-  const pull = await setupCloudAutoPull();
+  // CONVERGENCE GARANTIE : on fusionne TOUJOURS le cloud dans le local AVANT de
+  // pousser (pull inconditionnel, pas hash-conditionnel). Sinon un appareil aux
+  // données périmées écrasait les modifs fraîches d'un autre (guerre de sync,
+  // ex. renommage « Thomas Porchez » perdu). Après ce merge, le local = union
+  // des deux états → le push ne peut plus rien faire régresser.
+  const pull = await pullCloud({ replace: true });
   const dirty = await getMeta(META_LOCAL_DIRTY);
   const needPush = dirty
     || (pull && ((pull.localNewer || 0) > 0 || (pull.localOnly || 0) > 0));
