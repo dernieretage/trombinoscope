@@ -1065,6 +1065,16 @@ dialog {
   margin: 0;
 }
 dialog::backdrop { background: rgba(0,0,0,0); transition: background var(--t-mid) var(--ease); }
+/* ===== VERROUILLAGE DU SCROLL DE FOND quand un dialog est ouvert =====
+   Empêche le geste tactile de scroller la page derrière la modale (bug mobile
+   + web). :has() est supporté par tous les navigateurs actuels (Safari 15.4+).
+   Une classe .modal-open est aussi posée en JS comme filet de sécurité. */
+html:has(dialog[open]),
+html.modal-open, html.modal-open body {
+  overflow: hidden;
+  touch-action: none;
+}
+
 dialog[open]::backdrop { background: rgba(0,0,0,.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 dialog[open] { display: grid; place-items: center; inset: 0; width: 100vw; height: 100dvh; }
 dialog[open] .dialog__inner {
@@ -1085,6 +1095,12 @@ dialog[open] .dialog__inner {
   max-height: min(calc(100vh - 24px), calc(100dvh - 24px));
   overflow: hidden;
   display: flex; flex-direction: column;
+  overscroll-behavior: contain; /* le scroll interne ne chaîne pas vers le fond */
+}
+/* Toute zone défilable d'une modale garde son scroll pour elle */
+.dialog__body, .settings__body, .ai-scan__body, .profile__content, .profile {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 .dialog--bulk .dialog__inner { width: min(640px, calc(100vw - 24px)); }
 .dialog--shortcuts .dialog__inner { width: min(440px, calc(100vw - 24px)); }
@@ -1416,9 +1432,23 @@ dialog[open] .dialog__inner {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   min-height: 0;
-  max-height: calc(100dvh - 48px);
+  max-height: min(calc(100vh - 24px), calc(100dvh - 24px));
 }
-@media (max-width: 820px) { .profile { grid-template-columns: 1fr; } }
+/* Mobile / colonne unique : la fiche ENTIÈRE devient un conteneur défilable
+   (photo puis infos), au lieu de compter sur un scroll interne fragile qui
+   laissait le geste tactile fuir vers la page de fond. */
+@media (max-width: 820px) {
+  .profile {
+    display: block;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .profile__media { min-height: 300px; height: 62vw; max-height: 68vh; }
+  .profile__body { min-height: 0; }
+  /* on n'imbrique plus un 2e scroll : tout coule dans le scroll de .profile */
+  .profile__content { overflow: visible; flex: none; }
+}
 .profile__media {
   position: relative;
   background: var(--bg-elev-2);

@@ -640,6 +640,20 @@ function profileProfessions(p) {
 // ============= UI HOOKS =============
 
 function hookUI() {
+  // Verrou de scroll de fond : pose .modal-open sur <html> dès qu'un <dialog>
+  // est ouvert (filet de sécurité en plus de la règle CSS :has). Empêche le
+  // geste tactile de scroller la page derrière la fiche profil / les modales.
+  try {
+    const applyModalLock = () => {
+      const anyOpen = !!document.querySelector('dialog[open]');
+      document.documentElement.classList.toggle('modal-open', anyOpen);
+    };
+    new MutationObserver(applyModalLock).observe(document.body, {
+      attributes: true, attributeFilter: ['open'], subtree: true,
+    });
+    applyModalLock();
+  } catch {}
+
   // search input
   const input = $('#search-input');
   const clear = $('#search-clear');
