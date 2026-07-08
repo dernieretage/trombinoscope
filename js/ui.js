@@ -157,7 +157,7 @@ export function renderRow(profile, { firstImage, query, index = 0 } = {}) {
 // PROFILE DETAIL DIALOG
 // =================================================================
 
-export function renderProfileDetail(container, profile, images, { onEdit, onDelete, onClose, onPrev, onNext, onStatusChange, onNotesChange, onUploadImages, onDeleteImage, onFetchIg, onAiScan } = {}) {
+export function renderProfileDetail(container, profile, images, { onEdit, onDelete, onClose, onPrev, onNext, onStatusChange, onNotesChange, onProjectsChange, onUploadImages, onDeleteImage, onFetchIg, onAiScan } = {}) {
   // Replace innerHTML with a fresh root to clear any prior delegated listener
   container.innerHTML = '';
   // remove any previous listener by creating a fresh delegated handler each time
@@ -385,6 +385,32 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
     ts.appendChild(list);
     content.appendChild(ts);
   }
+
+  // projets ensemble — éditable directement depuis la fiche
+  const projSec = section('Projets ensemble');
+  const proj = document.createElement('div');
+  proj.className = 'profile__notes profile__projects';
+  proj.dataset.placeholder = 'Cliquez pour noter les projets faits avec ce profil (clips, pubs, shootings…)';
+  proj.contentEditable = 'true';
+  proj.spellcheck = true;
+  proj.textContent = profile.projects || '';
+  const PROJ_MAX = 5000;
+  let projTimer;
+  proj.addEventListener('input', () => {
+    if (proj.textContent.length > PROJ_MAX) {
+      proj.textContent = proj.textContent.slice(0, PROJ_MAX);
+      const range = document.createRange();
+      range.selectNodeContents(proj);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    clearTimeout(projTimer);
+    projTimer = setTimeout(() => onProjectsChange?.(proj.textContent), 350);
+  });
+  projSec.appendChild(proj);
+  content.appendChild(projSec);
 
   // notes éditables
   const notesSec = section('Notes');
