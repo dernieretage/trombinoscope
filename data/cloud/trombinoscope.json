@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "exportedAt": "2026-07-08T14:05:02.313Z",
+  "exportedAt": "2026-07-08T14:15:31.383Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -947,6 +947,28 @@
       "createdAt": "2026-05-02T23:06:31.138Z",
       "updatedAt": "2026-05-12T15:12:00.382Z",
       "agency": "Sticks & Stones Agency"
+    },
+    {
+      "id": "p_iibx2a9uumrc5tots",
+      "name": "Jules Simmen",
+      "profession": "Directeur de production",
+      "instagram": "julesimmen",
+      "phone": "",
+      "email": "",
+      "website": "",
+      "location": "",
+      "tags": [],
+      "notes": "",
+      "status": "a_contacter",
+      "createdAt": "2026-07-08T14:15:10.576Z",
+      "updatedAt": "2026-07-08T14:15:29.252Z",
+      "professions": [
+        "Directeur de production"
+      ],
+      "rate": "",
+      "agency": "",
+      "lastContact": "",
+      "projects": "Assort Health"
     },
     {
       "id": "p_iylmvh7a4moyydw0y",
