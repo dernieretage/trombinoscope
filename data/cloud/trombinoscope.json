@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "exportedAt": "2026-07-08T10:38:14.090Z",
+  "exportedAt": "2026-07-08T10:38:27.218Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -139,7 +139,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-07-08T10:34:01.351Z",
-      "updatedAt": "2026-07-08T10:38:04.608Z",
+      "updatedAt": "2026-07-08T10:38:18.565Z",
       "bio": "Welcome back to Instagram. Sign in to check out what your friends, family & interests have been capturing & sharing around the world.",
       "professions": [
         "Assistant réalisateur"
@@ -1687,6 +1687,6 @@
       "deletedAt": "2026-07-08T08:57:36.732Z"
     }
   ],
-  "imageChunks": 27,
-  "totalImages": 89
+  "imageChunks": 28,
+  "totalImages": 97
 }
