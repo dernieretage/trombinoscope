@@ -241,21 +241,12 @@ export async function pushCloud({ allowEmpty = false } = {}) {
     const chunkState = (await getMeta('cloud_chunk_state')) || {};
     const newState = {};
 
-    // Manifest EN PREMIER : si le push plante à mi-chunks, l'ancien manifest
-    // resterait sinon actif en pointant sur des chunks déjà écrasés →
-    // incohérence. Avec manifest first + safety threshold 50% au pull, un
-    // push partiel est simplement ignoré par les lecteurs.
-    const manifestPath = `${PATH_PREFIX}/${MANIFEST_FILE}`;
-    emit({ status: 'pushing', message: `Push manifest…` });
-    const manifestRes = await putFile(
-      manifestPath, exported.files[MANIFEST_FILE],
-      `Cloud sync — ${exported.totalImages} images`,
-      chunkState.__manifest?.sha,
-    );
-    newState.__manifest = { sha: manifestRes?.content?.sha || null };
-    console.log('[Cloud] Manifest pushé OK');
-
-    // Push uniquement les chunks modifiés
+    // ORDRE TRANSACTIONNEL : chunks D'ABORD, manifest EN DERNIER.
+    // Si le push est interrompu à mi-chunks (onglet fermé, réseau), l'ANCIEN
+    // manifest reste publié et cohérent : les lecteurs ne voient jamais un
+    // manifest annonçant des fichiers inexistants. (L'inverse — manifest
+    // d'abord — a produit le gel « 29 annoncés / 28 présents » qui a bloqué
+    // tous les pushs du 10/07 au 04/10.)
     const chunkNames = fileNames.filter(n => n !== MANIFEST_FILE);
     let pushed = 0, skipped = 0;
     for (let i = 0; i < chunkNames.length; i++) {
@@ -283,8 +274,20 @@ export async function pushCloud({ allowEmpty = false } = {}) {
     }
     console.log(`[Cloud] Chunks : ${pushed} pushés, ${skipped} inchangés (skippés)`);
 
+    // Manifest EN DERNIER = commit de la transaction.
+    const manifestPath = `${PATH_PREFIX}/${MANIFEST_FILE}`;
+    emit({ status: 'pushing', message: `Push manifest…` });
+    const manifestRes = await putFile(
+      manifestPath, exported.files[MANIFEST_FILE],
+      `Cloud sync — ${exported.totalImages} images`,
+      chunkState.__manifest?.sha,
+    );
+    newState.__manifest = { sha: manifestRes?.content?.sha || null };
+    console.log('[Cloud] Manifest pushé OK (commit)');
+
     // Cleanup chunks orphelins — seulement si le nombre de chunks a diminué
-    // (évite un LIST à chaque push).
+    // (évite un LIST à chaque push). Après le manifest : les lecteurs du
+    // nouveau manifest n'ont plus besoin des anciens fichiers.
     const prevChunkCount = Object.keys(chunkState).filter(k => k !== '__manifest').length;
     if (chunkNames.length < prevChunkCount) {
       const newChunkNames = new Set(chunkNames);
@@ -405,7 +408,39 @@ export async function pullCloud({ replace = true } = {}) {
     const filesByName = { [MANIFEST_FILE]: JSON.stringify(manifest) };
     const expectedChunks = manifest.imageChunks || 0;
     let downloadedChunks = 0;
-    let failedChunks = 0;
+    let failedChunks = 0;   // échecs RÉSEAU irrécupérables (bloquants pour le push)
+    let missingChunks = 0;  // 404 partout = fichier absent du serveur (NON bloquant :
+                            // c'est exactement le bug « manifest 29 / fichiers 28 »
+                            // qui a gelé tous les pushs pendant 3 mois)
+
+    // Fetch d'UN chunk, multi-sources + retry :
+    // 1) GitHub Pages même-origine, URL versionnée par exportedAt (CDN fiable,
+    //    fraîcheur déterministe : nouvelle version = nouvelle URL)
+    // 2) raw.githubusercontent.com (cache-bust horodaté)
+    // 3) API GitHub Contents (toujours fraîche, fiable avec token)
+    const ver = encodeURIComponent(manifest.exportedAt || Date.now());
+    async function fetchChunk(name) {
+      const sources = [
+        `data/cloud/${name}?v=${ver}`,
+        rawUrl(name),
+      ];
+      let saw404 = false;
+      for (const url of sources) {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const res = await fetch(url, { cache: 'no-store' });
+            if (res.ok) return { text: await res.text() };
+            if (res.status === 404) { saw404 = true; break; } // source suivante
+          } catch {}
+          await new Promise(r => setTimeout(r, 350 * (attempt + 1)));
+        }
+      }
+      try {
+        const t = await fetchFileViaApi(`${PATH_PREFIX}/${name}`);
+        if (t) return { text: t };
+      } catch {}
+      return saw404 ? { missing: true } : { failed: true };
+    }
 
     // 2. Fetch tous les chunks d'images en parallèle (par groupes de 4)
     if (expectedChunks > 0) {
@@ -417,29 +452,28 @@ export async function pullCloud({ replace = true } = {}) {
       for (let i = 0; i < chunkNames.length; i += concurrency) {
         const batch = chunkNames.slice(i, i + concurrency);
         await Promise.all(batch.map(async (name) => {
-          try {
-            const res = await fetch(rawUrl(name), { cache: 'no-store' });
-            if (res.ok) {
-              filesByName[name] = await res.text();
-              downloadedChunks++;
-              emit({ status: 'pulling', message: `Téléchargement ${downloadedChunks}/${expectedChunks}…` });
-            } else {
-              failedChunks++;
-              console.warn(`[Cloud] ${name} → ${res.status}`);
-            }
-          } catch (e) {
+          const r = await fetchChunk(name);
+          if (r.text !== undefined) {
+            filesByName[name] = r.text;
+            downloadedChunks++;
+            emit({ status: 'pulling', message: `Téléchargement ${downloadedChunks}/${expectedChunks}…` });
+          } else if (r.missing) {
+            missingChunks++;
+            console.warn(`[Cloud] ${name} absent du serveur (manifest désynchronisé) — ignoré.`);
+          } else {
             failedChunks++;
-            console.warn(`[Cloud] ${name} échoué:`, e.message);
+            console.warn(`[Cloud] ${name} injoignable (réseau).`);
           }
         }));
       }
     }
 
-    // Sécurité : si > 50% des chunks ont échoué, on n'écrase PAS le local
-    // (mieux vaut garder l'ancienne version complète qu'une version trompeuse à moitié
-    // pleine). Sous 50%, on importe et on signale.
-    if (expectedChunks > 0 && downloadedChunks < Math.ceil(expectedChunks / 2)) {
-      emit({ status: 'error', error: `Pull annulé : seulement ${downloadedChunks}/${expectedChunks} fichiers d'images téléchargés.` });
+    // Sécurité : si > 50% des chunks EXISTANTS ont échoué en réseau, on
+    // n'écrase pas le local. Les chunks ABSENTS du serveur ne comptent pas
+    // (ils n'existeront jamais, attendre ne sert à rien).
+    const reachable = expectedChunks - missingChunks;
+    if (reachable > 0 && downloadedChunks < Math.ceil(reachable / 2)) {
+      emit({ status: 'error', error: `Pull annulé : seulement ${downloadedChunks}/${reachable} fichiers d'images téléchargés.` });
       return { success: false, partialFailure: true, downloadedChunks, expectedChunks };
     }
 
@@ -456,11 +490,19 @@ export async function pullCloud({ replace = true } = {}) {
     const hash = await manifestHash(filesByName[MANIFEST_FILE]);
     await setMeta(META_LAST_SYNC, new Date().toISOString());
     await setMeta(META_LAST_HASH, hash);
-    emit({ status: 'idle', lastSync: new Date().toISOString() });
+    // HONNÊTETÉ D'ÉTAT : un pull réussi ne doit PAS afficher « Sauvegardé »
+    // si des modifs locales attendent encore leur push (c'était le mensonge
+    // qui a masqué 3 mois de gel). lastSync n'est émis que si rien n'attend.
+    const stillDirty = await getMeta(META_LOCAL_DIRTY);
+    const pendingLocal = (result.localNewer || 0) > 0 || (result.localOnly || 0) > 0;
+    if (stillDirty || pendingLocal) {
+      emit({ status: 'idle' }); // le bouton reste « Sauvegarder » (en attente)
+    } else {
+      emit({ status: 'idle', lastSync: new Date().toISOString() });
+    }
 
-    // Si certains chunks ont échoué (mais < 50%), avertir l'utilisateur
     if (failedChunks > 0) {
-      console.warn(`[Cloud] Pull partiel : ${failedChunks}/${expectedChunks} chunks d'images manquants.`);
+      console.warn(`[Cloud] Pull partiel : ${failedChunks} chunk(s) injoignable(s) (réseau).`);
     }
 
     return {
@@ -470,6 +512,7 @@ export async function pullCloud({ replace = true } = {}) {
       expectedChunks,
       downloadedChunks,
       failedChunks,
+      missingChunks,
       // Stats de convergence remontées du merge : l'appelant re-push si > 0
       localNewer: result.localNewer || 0,
       localOnly: result.localOnly || 0,
@@ -524,9 +567,17 @@ export async function syncCloud({ reason = 'manual' } = {}) {
   // profils, de tombstones (suppressions annulées) et d'images. `success:true`
   // couvre le cas « cloud vide » (1er push légitime). `failedChunks` = pull
   // partiel toléré à la lecture, mais on ne réécrit pas par-dessus.
+  // NB : missingChunks (fichiers absents du serveur) ne bloque PAS le push —
+  // seuls les échecs RÉSEAU (failedChunks) le font, et plus jamais en silence.
   const pullOk = pull && pull.success === true && !pull.failedChunks;
   if (!pullOk) {
-    console.warn('[Cloud] Push annulé : pull non abouti (', pull?.reason || pull?.error || `partiel ${pull?.failedChunks || ''}`, ') — on retentera au prochain cycle.');
+    const why = pull?.reason || pull?.error || `réseau (${pull?.failedChunks || '?'} fichier(s) injoignable(s))`;
+    console.warn('[Cloud] Push différé : pull non abouti (', why, ') — réessai automatique dans 8 s.');
+    emit({ status: 'error', error: 'Synchronisation incomplète (' + why + ') — réessai automatique…' });
+    if (!syncCycleQueued) {
+      syncCycleQueued = true;
+      setTimeout(() => { syncCycleQueued = false; syncCloud({ reason: reason + '+retry-pull' }); }, 8000);
+    }
     return { pull, push: null, pushed: false, pushDeferred: true };
   }
   const dirty = await getMeta(META_LOCAL_DIRTY);
