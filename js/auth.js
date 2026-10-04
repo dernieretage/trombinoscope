@@ -74,6 +74,28 @@ async function storeUnlock(password, token) {
 }
 
 /**
+ * Vérifie activement qu'un token a le droit d'écriture sur le dépôt.
+ * true = oui ; false = mort/sans droits ; null = indéterminé (hors-ligne,
+ * 5xx, rate-limit) → ne pas verrouiller sur un doute.
+ */
+async function tokenWorks(token) {
+  try {
+    const res = await fetch('https://api.github.com/repos/dernieretage/trombinoscope', {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' },
+      cache: 'no-store',
+    });
+    if (res.status === 401) return false;
+    if (res.status === 403) {
+      // 403 peut être un rate-limit (token valide, quota épuisé) → indéterminé
+      return res.headers.get('x-ratelimit-remaining') === '0' ? null : false;
+    }
+    if (!res.ok) return null;
+    const data = await res.json();
+    return !!data?.permissions?.push;
+  } catch { return null; }
+}
+
+/**
  * Auto-réparation : re-dérive le token depuis le coffre COURANT avec le mot de
  * passe retenu. À appeler au boot (silencieux) et quand une écriture échoue en
  * 401/403 (`force: true`).
@@ -92,10 +114,14 @@ export async function ensureFreshToken({ force = false } = {}) {
 
   if (!pw) {
     // Appareils d'avant v2 : un token hérité traîne mais pas de mot de passe
-    // retenu. Tant que le token marche, on ne dérange personne ; s'il meurt
-    // (force=true), on verrouille pour re-demander le mot de passe.
+    // retenu. On le VALIDE ACTIVEMENT : sinon l'appareil affiche « Sync »
+    // en vert pendant des mois avec une clé morte, et toutes ses modifs
+    // restent locales en silence (l'incident de l'été 2026).
     if (force) { await lock(); return { locked: true }; }
-    return curToken ? { ok: true, changed: false } : { locked: true };
+    if (!curToken) return { locked: true };
+    const works = await tokenWorks(curToken);
+    if (works === false) { await lock(); return { locked: true }; }
+    return { ok: true, changed: false };
   }
 
   if (!force && curToken && unlockedVer === VAULT.ver) {
