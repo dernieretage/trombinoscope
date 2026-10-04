@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "exportedAt": "2026-10-04T21:29:38.800Z",
+  "exportedAt": "2026-10-04T21:33:23.088Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -952,7 +952,7 @@
       "notes": "",
       "status": "a_contacter",
       "createdAt": "2026-10-04T18:28:23.359Z",
-      "updatedAt": "2026-10-04T18:30:06.279Z",
+      "updatedAt": "2026-10-04T21:33:19.637Z",
       "professions": [
         "Directeur de la photographie"
       ]
@@ -2039,6 +2039,6 @@
     }
   ],
   "tombstones": [],
-  "imageChunks": 28,
-  "totalImages": 119
+  "imageChunks": 30,
+  "totalImages": 135
 }
