@@ -17,25 +17,16 @@ import {
 } from './ui.js';
 import { fetchInstagramProfile, fetchInstagramProfilePicOnly, fetchImageAsBlob, isMicrolinkRateLimited, resetMicrolinkRateLimit } from './ig.js';
 import {
-  getSyncConfig, setSyncToken, setSyncAutoSync, clearSyncConfig,
-  testConnection as testSyncConnection,
-  pushNow as syncPushNow, pullNow as syncPullNow,
-  setupAutoSync, schedulePush, onSyncStateChange, isSyncReady, diagnoseSync,
-  generateInviteLink, consumeActivateParam,
-} from './sync.js';
-import {
-  getCloudConfig, setCloudToken, setCloudAuto, clearCloudConfig,
-  testCloudConnection, pushCloud, pullCloud, setupCloudAutoPull,
-  scheduleCloudPush, onCloudStateChange, diagnoseCloud, markCloudDirty,
-  generateCloudInviteLink, consumeCloudActivateParam, syncCloud, cloudProfileCount,
+  getCloudConfig, setupCloudAutoPull,
+  scheduleCloudPush, onCloudStateChange, diagnoseCloud,
+  syncCloud, cloudProfileCount,
 } from './cloud.js';
-import { ensureAuthGate } from './auth.js';
+import { ensureAuthGate, ensureFreshToken, lock as lockDevice } from './auth.js';
 import {
   getAiKey, setAiKey, getAiModel, setAiModel,
   isAiConfigured, scanProfileWithAi, testAiConnection,
 } from './ai.js';
 import { applyEnrichmentIfNew } from './enrichment.js';
-import { renderQRToCanvas } from './qr.js';
 
 // ============= STATE =============
 
@@ -252,17 +243,27 @@ const STATE = {
   setTimeout(() => document.body.classList.add('is-ready'), 50);
 
   // Sync init (en arrière-plan, ne bloque pas l'UI)
-  setupSyncListeners();
   setupCloudListeners();
 
-  // Lien magique CLOUD : ?cloud=xxx → configure le token cloud auto
-  consumeCloudActivateParam().then(async (r) => {
-    if (r?.activated) {
-      toast('✓ Cloud public activé : vous pouvez désormais sauvegarder vos modifications depuis cet appareil.', { type: 'ok', timeout: 6000 });
+  // Clé auto-réparante : si le coffre a été rescellé (nouvelle clé d'écriture),
+  // le mot de passe retenu re-dérive le token silencieusement. Si le mot de
+  // passe a changé, l'appareil se verrouille et la porte se re-présente.
+  ensureFreshToken().then((r) => {
+    if (r?.locked) {
+      ensureAuthGate({
+        message: 'La clé d\'accès a été renouvelée — ressaisis le mot de passe.',
+        onUnlocked: () => {
+          updateSyncPill();
+          updateSaveButton();
+          syncCloud({ reason: 'unlock-refresh' }).catch(() => {});
+        },
+      }).catch(() => {});
+    } else if (r?.changed) {
+      console.log('[Auth] Clé d\'écriture renouvelée depuis le coffre.');
       updateSyncPill();
       updateSaveButton();
     }
-  });
+  }).catch(() => {});
 
   // Cloud public : auto-pull au démarrage si manifest existe en ligne
   // (PRIORITÉ #1 — pas de configuration nécessaire sur les nouveaux appareils)
@@ -283,12 +284,14 @@ const STATE = {
     return true;
   }
 
-  // Polling toutes les 60s : si quelqu'un push depuis un autre appareil, on récupère
+  // Polling toutes les 30s : si quelqu'un push depuis un autre appareil, on
+  // récupère (1 GET manifest léger par tick ; le téléchargement complet ne
+  // part que si le hash distant a changé).
   setInterval(() => {
     if (document.hidden) return; // ne pas poll si tab inactive
     if (!canPullSafely()) return;
     doCloudPullAndRefresh({ silent: false, source: 'poll' }).catch(() => {});
-  }, 60_000);
+  }, 30_000);
 
   // Pull forcé quand la tab redevient visible (mobile : très important — l'app
   // peut rester en arrière-plan plusieurs minutes sans polling).
@@ -311,40 +314,8 @@ const STATE = {
     doCloudPullAndRefresh({ silent: true, source: 'focus' }).catch(() => {});
   });
 
-  // Si l'URL contient ?activate=xxx, auto-config sync (lien magique)
-  consumeActivateParam().then(async (r) => {
-    if (r?.activated && r.pulled) {
-      STATE.profiles = await getAllProfiles();
-      STATE.imagesByProfile.clear();
-      for (const p of STATE.profiles) {
-        const imgs = await getProfileImages(p.id);
-        if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
-      }
-      buildFilterChips();
-      buildProfessionDatalist();
-      render();
-      window.__updateIgBulkCount?.();
-      updateSyncPill();
-      updateSaveButton();
-      toast(`✓ Sync activée automatiquement : ${r.pulled.profiles} profils + ${r.pulled.images} images chargés.`, { type: 'ok', timeout: 7000 });
-    } else if (r?.activated === false) {
-      toast('Lien d\'invitation invalide : ' + (r.error || 'erreur'), { type: 'err', timeout: 5000 });
-    }
-  });
-
-  // Gist (legacy) : activé UNIQUEMENT si un token Gist existe ET que le cloud
-  // public n'est pas configuré. Sinon (appareil migré vers le cloud), le pull
-  // Gist figé ressuscitait de vieux profils supprimés et tournait en même temps
-  // que le pull cloud au boot (deux merges entrelacés lisant/écrivant les mêmes
-  // profils et la même meta tombstones).
-  (async () => {
-    try {
-      const [syncCfg, cloudCfg] = await Promise.all([getSyncConfig(), getCloudConfig()]);
-      if (syncCfg.token && !cloudCfg.token) await setupAutoSync();
-    } catch {}
-    updateSyncPill();
-    updateSaveButton();
-  })();
+  updateSyncPill();
+  updateSaveButton();
   // PWA — enregistre le SW et reload auto quand une nouvelle version active
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -361,84 +332,6 @@ const STATE = {
 
   // (L'ancien banner d'onboarding QR est remplacé par la porte mot de passe.)
 })();
-
-async function maybeShowOnboardingBanner() {
-  try {
-    const cloudCfg = await getCloudConfig();
-    if (cloudCfg.token) return; // déjà configuré
-    const dismissed = await getMeta('onboarding_dismissed_at');
-    if (dismissed && Date.now() - dismissed < 24 * 3600 * 1000) return; // pas plus d'1x/jour
-    if (STATE.profiles.length === 0) return; // app vide, rien à protéger
-    showOnboardingBanner();
-  } catch {}
-}
-
-function showOnboardingBanner() {
-  if (document.getElementById('onboarding-banner')) return;
-  const banner = document.createElement('div');
-  banner.id = 'onboarding-banner';
-  banner.className = 'onboarding';
-  banner.innerHTML = `
-    <div class="onboarding__inner">
-      <div class="onboarding__icon">📱</div>
-      <div class="onboarding__body">
-        <div class="onboarding__title">Activer la sauvegarde sur cet appareil</div>
-        <div class="onboarding__text">Tu lis les profils en temps réel mais tu ne peux pas encore enregistrer tes modifs ici. Sur un appareil déjà configuré, ouvre <strong>Réglages → QR</strong>, scanne-le → cet appareil pourra modifier en 2 sec.</div>
-      </div>
-      <div class="onboarding__actions">
-        <button type="button" class="btn btn--primary" id="onboarding-open">Comment faire ?</button>
-        <button type="button" class="btn btn--ghost" id="onboarding-dismiss" aria-label="Masquer">×</button>
-      </div>
-    </div>`;
-  document.body.appendChild(banner);
-  document.getElementById('onboarding-open').addEventListener('click', () => {
-    openOnboardingHelp();
-  });
-  document.getElementById('onboarding-dismiss').addEventListener('click', async () => {
-    banner.classList.add('onboarding--out');
-    setTimeout(() => banner.remove(), 250);
-    await setMeta('onboarding_dismissed_at', Date.now());
-  });
-  requestAnimationFrame(() => banner.classList.add('onboarding--in'));
-}
-
-function openOnboardingHelp() {
-  const dlgId = 'onboarding-help-dialog';
-  let dlg = document.getElementById(dlgId);
-  if (!dlg) {
-    dlg = document.createElement('dialog');
-    dlg.id = dlgId;
-    dlg.className = 'dialog';
-    dlg.innerHTML = `
-      <div class="dialog__inner" style="max-width: 460px;">
-        <header class="dialog__head">
-          <h2>Activer cet appareil en 2 sec</h2>
-          <button type="button" class="iconbtn" data-close aria-label="Fermer">×</button>
-        </header>
-        <div class="dialog__body" style="padding: 8px 4px;">
-          <ol style="line-height: 1.6; padding-left: 22px; margin: 0;">
-            <li>Sur un appareil <strong>déjà configuré</strong> (où tu peux sauvegarder), ouvre le menu <strong>⋯ → Réglages</strong>.</li>
-            <li>Va dans <strong>☁︎ Cloud public auto</strong> → clic sur <strong>📱 QR + lien</strong>.</li>
-            <li>Pointe l'appareil de cette page vers le QR ; clique sur le lien qui s'affiche → cloud activé instantanément.</li>
-          </ol>
-          <p style="margin: 14px 0 0; font-size: 13px; color: var(--text-muted);">Astuce : pas d'autre appareil configuré ? <a href="#" id="onboarding-config-here">Configure le cloud directement ici</a> (un PAT GitHub sera demandé une seule fois).</p>
-        </div>
-      </div>`;
-    document.body.appendChild(dlg);
-    dlg.querySelector('[data-close]').addEventListener('click', () => dlg.close());
-    dlg.querySelector('#onboarding-config-here').addEventListener('click', (e) => {
-      e.preventDefault();
-      dlg.close();
-      openSettingsDialog();
-      setTimeout(() => {
-        const cloudInput = $('#cloud-token-input');
-        cloudInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        cloudInput?.focus();
-      }, 300);
-    });
-  }
-  dlg.showModal();
-}
 
 // ============= CLOUD PULL HELPER =============
 
@@ -870,7 +763,6 @@ function hookUI() {
   // bouton "Sauvegarder" — cycle complet pull→merge→push
   $('#save-btn').addEventListener('click', async () => {
     const cloudCfg = await getCloudConfig();
-    const syncCfg = await getSyncConfig();
 
     // Cas 1 : appareil déverrouillé → sync complète (intègre les modifs des
     // autres appareils PUIS pousse les nôtres — zéro écrasement croisé)
@@ -902,6 +794,8 @@ function hookUI() {
             type: 'info', timeout: 6000,
           });
           scheduleCloudPush(wait * 1000 + 2000);
+        } else if (e.code === 'AUTH') {
+          handleAuthFailure();
         } else {
           toast('Sync échouée : ' + e.message, { type: 'err', timeout: 6000 });
         }
@@ -909,29 +803,7 @@ function hookUI() {
       return;
     }
 
-    // Cas 2 : Gist configuré (legacy)
-    if (syncCfg.token) {
-      try {
-        const r = await syncPushNow();
-        const imgMsg = r.images ? ` + ${r.images} images (${r.chunks} fichiers)` : '';
-        toast(`✓ Sauvegarde Gist : ${r.profiles} profils${imgMsg} (${r.sizeKb} Ko).`, { type: 'ok', timeout: 4500 });
-      } catch (e) {
-        // Quota atteint : non-bloquant, l'auto-retry s'en occupera
-        if (e.code === 'QUOTA' || /Quota GitHub/.test(e.message)) {
-          const wait = e.waitSec || 60;
-          const min = Math.max(1, Math.round(wait / 60));
-          toast(`⏳ Sauvegarde différée — quota Gist atteint, réessai auto dans ${min}min. Astuce : configurez le Cloud public (Réglages) pour éviter ce souci.`, {
-            type: 'info', timeout: 7000,
-          });
-          schedulePush(wait * 1000 + 2000);
-        } else {
-          toast('Sauvegarde Gist échouée : ' + e.message, { type: 'err', timeout: 6000 });
-        }
-      }
-      return;
-    }
-
-    // Cas 3 : appareil verrouillé → re-proposer le mot de passe
+    // Cas 2 : appareil verrouillé → re-proposer le mot de passe
     ensureAuthGate({
       onUnlocked: () => {
         updateSyncPill();
@@ -2046,37 +1918,21 @@ function triggerImport() {
 
 async function doDiagnoseSync() {
   toast('Diagnostic en cours…', { type: 'info', timeout: 0 });
-  const r = await diagnoseSync();
-  // Build a readable summary
-  let html = '';
-  if (!r.configured) {
-    html = 'La sync n\'est pas configurée.';
-  } else if (r.error) {
-    html = `Erreur : ${r.error}`;
-  } else {
-    html = [
-      `Gist : ${r.gistId}`,
-      `URL : ${r.gistUrl}`,
-      `Mis à jour : ${new Date(r.gistUpdated).toLocaleString('fr-FR')}`,
-      `Fichiers totaux : ${r.totalFiles}`,
-      `Taille totale : ${Math.round(r.totalSize / 1024)} Ko`,
-      `Profils dans le manifest : ${r.manifestProfiles}`,
-      `Total images annoncé : ${r.manifestTotalImages}`,
-      `Chunks d'images sur le Gist : ${r.chunkFilesCount}`,
-      r.chunkFilesCount > 0 ? `Tailles : ${r.chunkSizes.map(c => c.sizeKb + ' Ko' + (c.truncated ? '⚠tronqué' : '')).join(', ')}` : '',
-      `Dernière sync locale : ${r.lastSync ? new Date(r.lastSync).toLocaleString('fr-FR') : 'jamais'}`,
-    ].filter(Boolean).join('\n');
-  }
-  // Trouver tous les toasts existants info et les fermer
+  const r = await diagnoseCloud();
+  const localProfiles = STATE.profiles.length;
+  let localImages = 0;
+  for (const imgs of STATE.imagesByProfile.values()) localImages += imgs.length;
+  const lines = [
+    `Écriture déverrouillée : ${r.configured ? 'oui' : 'non (mot de passe requis)'}`,
+    `Lecture cloud : ${r.publicReadOk ? 'OK' : 'ÉCHEC (' + (r.publicReadError || r.publicReadStatus) + ')'}`,
+    `Profils cloud : ${r.remoteProfiles ?? '?'} — local : ${localProfiles}`,
+    `Images cloud : ${r.remoteTotalImages ?? '?'} (${r.remoteImageChunks ?? '?'} fichiers) — local : ${localImages}`,
+    `Dernier export cloud : ${r.remoteExportedAt ? new Date(r.remoteExportedAt).toLocaleString('fr-FR') : '?'}`,
+    `Dernière sync de cet appareil : ${r.lastSync ? new Date(r.lastSync).toLocaleString('fr-FR') : 'jamais'}`,
+  ];
   document.querySelectorAll('.toast').forEach(t => { if (t.textContent.includes('Diagnostic en cours')) t.remove(); });
-  // Affichage dans une modale alert simple pour copier
-  const result = window.prompt('Diagnostic sync GitHub (Cmd+C pour copier) :', html);
-  console.log('[Diagnostic Sync]', r);
-  if (r.chunkFilesCount === 0 && r.manifestProfiles > 0) {
-    toast('⚠ AUCUN chunk d\'images sur le Gist ! Cliquez Sauvegarder pour les pusher.', { type: 'warn', timeout: 8000 });
-  } else if (r.chunkSizes?.some(c => c.truncated)) {
-    toast('⚠ Certains chunks sont tronqués côté GitHub. Re-sauvegardez.', { type: 'warn', timeout: 8000 });
-  }
+  window.prompt('Diagnostic cloud (Cmd+C pour copier) :', lines.join('\n'));
+  console.log('[Diagnostic Cloud]', r);
 }
 
 async function doBackupLocal() {
@@ -2270,97 +2126,10 @@ function openDialog(id) {
 
 // ============= SYNC =============
 
-let __unsubSyncListener = null;
-function setupSyncListeners() {
-  // Idempotent : si déjà setup, on retire l'ancien listener pour éviter les
-  // doubles notifications (peut arriver lors de hot-reload ou boot multiple).
-  if (__unsubSyncListener) { try { __unsubSyncListener(); } catch {} }
-  __unsubSyncListener = onSyncStateChange(async (s) => {
-    updateSyncPill(s);
-    const btn = $('#save-btn');
-    if (btn) {
-      btn.classList.remove('is-dirty', 'is-syncing', 'is-error', 'is-saved');
-      const label = btn.querySelector('.savebtn__label');
-      // Si aucun token Gist NI cloud configuré → on n'affiche pas d'erreur,
-      // même si une opération échoue. C'est juste un état "pas configuré".
-      const cloudCfg = await getCloudConfig();
-      const syncCfg = await getSyncConfig();
-      const noConfig = !cloudCfg.token && !syncCfg.token;
-
-      if (s.status === 'pushing') {
-        btn.classList.add('is-syncing');
-        if (label) label.textContent = 'Sauvegarde…';
-      } else if (s.status === 'pulling') {
-        btn.classList.add('is-syncing');
-        if (label) label.textContent = 'Réception…';
-      } else if (s.status === 'error') {
-        if (noConfig) {
-          updateSaveButton();
-          return;
-        }
-        // Erreur de quota = transitoire, auto-retry → on n'affiche pas "Erreur"
-        if (s.error && /Quota GitHub/.test(s.error)) {
-          btn.classList.add('is-dirty');
-          if (label) label.textContent = 'En attente';
-          btn.title = 'Quota Gist atteint — réessai automatique. Astuce : Cloud public sans quota dans Réglages.';
-        } else {
-          btn.classList.add('is-error');
-          if (label) label.textContent = 'Erreur';
-          btn.title = 'Erreur : ' + s.error;
-        }
-      } else if (s.status === 'idle' && s.lastSync) {
-        markClean();
-        btn.classList.add('is-saved');
-        if (label) label.textContent = 'Sauvegardé';
-        // Retour à l'état "saved" puis fade out
-        setTimeout(() => {
-          if (!dirtyState) updateSaveButton();
-        }, 3000);
-      }
-    }
-    if (s.status === 'pulled-silent') {
-      // Pull silencieux réussi (nouveau device qui a chargé les data du Gist)
-      STATE.profiles = await getAllProfiles();
-      STATE.imagesByProfile.clear();
-      for (const p of STATE.profiles) {
-        const imgs = await getProfileImages(p.id);
-        if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
-      }
-      buildFilterChips();
-      buildProfessionDatalist();
-      render();
-      window.__updateIgBulkCount?.();
-      const imgMsg = s.images ? ` + ${s.images} images` : '';
-      toast(`✓ Synchro cloud : ${s.profiles} profils${imgMsg} chargés.`, { type: 'ok', timeout: 5000 });
-    }
-    if (s.status === 'remote-newer') {
-      toast(`Conflit : ${s.remoteProfiles} profils distants vs vos modifs locales. Que faire ?`, {
-        type: 'warn', timeout: 0,
-        action: { label: 'Récupérer le cloud', onClick: async () => {
-          try {
-            await syncPullNow({ replace: true });
-            STATE.profiles = await getAllProfiles();
-            STATE.imagesByProfile.clear();
-            for (const p of STATE.profiles) {
-              const imgs = await getProfileImages(p.id);
-              if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
-            }
-            buildFilterChips();
-            render();
-            window.__updateIgBulkCount?.();
-            toast('Sync : profils mis à jour depuis le cloud.', { type: 'ok' });
-          }
-          catch (e) { toast('Sync échec : ' + e.message, { type: 'err' }); }
-        }},
-      });
-    }
-  });
-}
-
 async function updateSyncPill(s) {
   const pill = $('#sync-pill');
   if (!pill) return;
-  const cfg = await getSyncConfig();
+  const cfg = await getCloudConfig();
   if (!cfg.token) {
     pill.classList.add('off');
     pill.classList.remove('ok', 'syncing', 'err');
@@ -2384,15 +2153,36 @@ async function updateSyncPill(s) {
 }
 
 function maybeSchedulePush() {
-  // Priorité au cloud public si configuré
+  // Sauvegarde automatique : CHAQUE modification planifie un cycle
+  // pull→merge→push (debounce 2,5 s). Rien à configurer.
   getCloudConfig().then(cfg => {
     if (cfg.token) {
       scheduleCloudPush(2500);
       markDirty();
-    } else if (isSyncReady()) {
-      schedulePush(2500);
+    } else {
+      // Appareil verrouillé : la modif reste locale et partira au prochain
+      // déverrouillage (syncCloud au unlock). On signale l'état.
       markDirty();
     }
+  });
+}
+
+// Clé d'écriture morte (401/403 définitif malgré l'auto-réparation) :
+// on verrouille l'appareil et on re-présente la porte avec une explication.
+let __authGateShown = false;
+function handleAuthFailure() {
+  if (__authGateShown) return;
+  __authGateShown = true;
+  lockDevice().catch(() => {}).finally(() => {
+    ensureAuthGate({
+      message: 'La clé d\'accès a été renouvelée — ressaisis le mot de passe.',
+      onUnlocked: () => {
+        __authGateShown = false;
+        updateSyncPill();
+        updateSaveButton();
+        syncCloud({ reason: 'unlock-after-auth-fail' }).catch(() => {});
+      },
+    }).then(() => { __authGateShown = false; }).catch(() => { __authGateShown = false; });
   });
 }
 
@@ -2400,14 +2190,14 @@ let __unsubCloudListener = null;
 function setupCloudListeners() {
   if (__unsubCloudListener) { try { __unsubCloudListener(); } catch {} }
   __unsubCloudListener = onCloudStateChange(async (s) => {
+    updateSyncPill(s);
     const btn = $('#save-btn');
     if (!btn) return;
     btn.classList.remove('is-dirty', 'is-syncing', 'is-error', 'is-saved', 'is-unconfigured');
     const label = btn.querySelector('.savebtn__label');
     // Pas de token → l'app fait juste de la lecture anonyme. Erreurs = silencieuses.
     const cloudCfg = await getCloudConfig();
-    const syncCfg = await getSyncConfig();
-    const noConfig = !cloudCfg.token && !syncCfg.token;
+    const noConfig = !cloudCfg.token;
 
     if (s.status === 'pushing') {
       btn.classList.add('is-syncing');
@@ -2419,6 +2209,12 @@ function setupCloudListeners() {
       if (noConfig) {
         // Lecture anonyme qui échoue → on ne dérange pas l'utilisateur,
         // on retombe sur l'état "non configuré" (gris discret).
+        updateSaveButton();
+        return;
+      }
+      if (s.error && /Clé d'écriture invalide/.test(s.error)) {
+        // Clé morte : re-présenter la porte (auto-réparation déjà tentée).
+        handleAuthFailure();
         updateSaveButton();
         return;
       }
@@ -2458,21 +2254,18 @@ async function updateSaveButton() {
   if (!btn) return;
   btn.hidden = false;
   const cloudCfg = await getCloudConfig();
-  const syncCfg = await getSyncConfig();
-  const hasAnySync = cloudCfg.token || syncCfg.token;
   btn.classList.remove('is-dirty', 'is-syncing', 'is-error', 'is-saved', 'is-unconfigured');
   const label = btn.querySelector('.savebtn__label');
-  if (!hasAnySync) {
+  if (!cloudCfg.token) {
     btn.classList.add('is-unconfigured');
     if (label) label.textContent = 'Déverrouiller';
     btn.title = 'Entrez le mot de passe pour pouvoir modifier depuis cet appareil.';
     return;
   }
-  const lastSync = cloudCfg.lastSync || syncCfg.lastSync;
-  const sourceName = cloudCfg.token ? 'cloud public' : 'Gist';
-  if (dirtyState) { btn.classList.add('is-dirty'); if (label) label.textContent = 'Sauvegarder'; btn.title = `Modifications en attente — clic pour pusher vers le ${sourceName} (⌘S)`; }
-  else if (lastSync) { btn.classList.add('is-saved'); if (label) label.textContent = 'Sauvegardé'; btn.title = `Tout est sauvegardé sur le ${sourceName}. Dernière sync : ` + new Date(lastSync).toLocaleString('fr-FR'); }
-  else { if (label) label.textContent = 'Sauvegarder'; btn.title = `Push vers ${sourceName} (⌘S)`; }
+  const lastSync = cloudCfg.lastSync;
+  if (dirtyState) { btn.classList.add('is-dirty'); if (label) label.textContent = 'Sauvegarder'; btn.title = 'Modifications en attente — clic pour synchroniser (⌘S)'; }
+  else if (lastSync) { btn.classList.add('is-saved'); if (label) label.textContent = 'Sauvegardé'; btn.title = 'Tout est synchronisé. Dernière sync : ' + new Date(lastSync).toLocaleString('fr-FR'); }
+  else { if (label) label.textContent = 'Sauvegarder'; btn.title = 'Synchroniser (⌘S)'; }
 }
 
 // ============= SETTINGS DIALOG =============
@@ -2487,60 +2280,27 @@ async function openSettingsDialog() {
 
 function hookSettingsDialog() {
   settingsHooked = true;
-  const dlg = $('#settings-dialog');
 
-  // Auto-trim token inputs : un copier-coller depuis Slack/Notion ramène souvent
-  // un espace ou un saut de ligne à la fin → erreurs de connexion confuses.
-  for (const id of ['#cloud-token-input', '#sync-token-input']) {
-    const inp = dlg.querySelector(id);
-    if (inp) {
-      inp.addEventListener('blur', () => { inp.value = inp.value.trim(); });
-      inp.addEventListener('paste', () => {
-        // Le paste fire AVANT que la valeur soit insérée → wait next tick
-        setTimeout(() => { inp.value = inp.value.trim(); }, 0);
-      });
-    }
-  }
-
-  // CLOUD PUBLIC (RECOMMANDÉ)
-  $('#cloud-test-btn').addEventListener('click', async () => {
-    const token = $('#cloud-token-input').value.trim();
-    const out = $('#cloud-test-result');
-    if (!token) { out.textContent = 'Saisissez un token.'; out.className = 'settings__small err'; return; }
-    out.textContent = 'Test en cours…'; out.className = 'settings__small';
+  // SYNCHRONISATION CLOUD (automatique — zéro configuration)
+  $('#cloud-sync-now').addEventListener('click', async () => {
+    const out = $('#cloud-sync-result');
+    out.textContent = 'Synchronisation…';
+    out.className = 'settings__small';
     try {
-      const u = await testCloudConnection(token);
-      out.textContent = `✓ Token OK (${u.repo}). Push initial vers le cloud public…`;
-      out.className = 'settings__small ok';
-      await setCloudToken(token);
-      try {
-        const s = await syncCloud({ reason: 'save-button' });
-        const r = s.push || { profiles: 0, images: 0, chunks: 0, sizeKb: 0 };
-        out.textContent = `✓ Cloud activé : ${r.profiles} profils + ${r.images} images (${r.chunks} fichiers, ${r.sizeKb} Ko). Tout autre appareil verra ces données automatiquement.`;
-      } catch (pushErr) {
-        out.textContent = `⚠ Cloud activé mais push initial échoué : ${pushErr.message}`;
+      const cfg = await getCloudConfig();
+      if (!cfg.token) {
+        out.textContent = 'Appareil verrouillé — entre le mot de passe pour pouvoir écrire.';
         out.className = 'settings__small err';
+        $('#settings-dialog').close();
+        ensureAuthGate({
+          onUnlocked: () => {
+            updateSyncPill(); updateSaveButton();
+            syncCloud({ reason: 'unlock-from-settings' }).catch(() => {});
+          },
+        }).catch(() => {});
+        return;
       }
-      updateSyncPill();
-      updateSaveButton();
-      refreshSettingsView();
-    } catch (e) {
-      out.textContent = '✗ ' + e.message;
-      out.className = 'settings__small err';
-    }
-  });
-  $('#cloud-auto-toggle').addEventListener('change', async (e) => {
-    await setCloudAuto(e.target.checked);
-  });
-  $('#cloud-pull-btn').addEventListener('click', async () => {
-    try {
-      const ok = await confirmDialog({
-        title: 'Récupérer du cloud public ?',
-        text: 'Cela remplacera vos données locales par celles du cloud.',
-        okLabel: 'Récupérer',
-      });
-      if (!ok) return;
-      const r = await pullCloud({ replace: true });
+      const r = await syncCloud({ reason: 'manual-settings' });
       STATE.profiles = await getAllProfiles();
       STATE.imagesByProfile.clear();
       for (const p of STATE.profiles) {
@@ -2550,208 +2310,37 @@ function hookSettingsDialog() {
       buildFilterChips();
       render();
       window.__updateIgBulkCount?.();
-      toast(`✓ ${r.profiles} profils + ${r.images} images chargés du cloud.`, { type: 'ok' });
-      refreshSettingsView();
-    } catch (e) { toast('Pull cloud échoué : ' + e.message, { type: 'err' }); }
-  });
-  $('#cloud-push-btn').addEventListener('click', async () => {
-    try {
-      const r = await syncCloud({ reason: 'save-button' });
       const p = r.push;
-      toast(p ? `✓ ${p.profiles} profils + ${p.images} images synchronisés (${p.sizeKb} Ko).` : '✓ Déjà à jour.', { type: 'ok', timeout: 5000 });
-      STATE.profiles = await getAllProfiles();
-      render();
-      refreshSettingsView();
-    } catch (e) { toast('Sync cloud échouée : ' + e.message, { type: 'err' }); }
-  });
-  $('#cloud-invite-btn').addEventListener('click', async () => {
-    try {
-      const link = await generateCloudInviteLink();
-      const out = $('#cloud-invite-out');
-      const help = $('#cloud-invite-help');
-      const qrWrap = $('#cloud-qr-wrap');
-      const qrCanvas = $('#cloud-qr-canvas');
-      const shareBtn = $('#cloud-share-btn');
-      out.value = link;
-      out.style.display = 'block';
-      help.style.display = 'block';
-      help.textContent = '✓ Scanne le QR depuis l\'autre appareil → cloud activé. Ou copie le lien.';
-      help.className = 'settings__small ok';
-      // Rendu QR
-      try {
-        renderQRToCanvas(qrCanvas, link, { scale: 8, margin: 3 });
-        qrWrap.style.display = 'block';
-      } catch (e) {
-        console.warn('QR render failed:', e.message);
-        qrWrap.style.display = 'none';
-      }
-      // Bouton partager natif si dispo (iOS, macOS Safari, Android Chrome)
-      if (navigator.share) {
-        shareBtn.hidden = false;
-        shareBtn.onclick = async () => {
-          try {
-            await navigator.share({
-              title: 'Trombinoscope — activer le cloud',
-              text: 'Ouvre ce lien sur ce téléphone pour activer la sauvegarde cloud du Trombinoscope.',
-              url: link,
-            });
-          } catch (e) {
-            if (e.name !== 'AbortError') console.warn('Share failed:', e);
-          }
-        };
-      }
-      // Copie auto
-      try {
-        await navigator.clipboard.writeText(link);
-      } catch {}
-    } catch (e) {
-      const help = $('#cloud-invite-help');
-      help.style.display = 'block';
-      help.textContent = '✗ ' + e.message;
-      help.className = 'settings__small err';
-    }
-  });
-
-  $('#cloud-disconnect-btn').addEventListener('click', async () => {
-    const ok = await confirmDialog({
-      title: 'Déconnecter le cloud ?',
-      text: 'Vos données restent en local et sur le cloud public. Le token sera oublié sur cet appareil.',
-      okLabel: 'Déconnecter',
-    });
-    if (!ok) return;
-    await clearCloudConfig();
-    refreshSettingsView();
-    toast('Cloud déconnecté sur cet appareil.', { type: 'ok' });
-  });
-
-  // SYNC GIST (legacy)
-  $('#sync-test-btn').addEventListener('click', async () => {
-    const token = $('#sync-token-input').value.trim();
-    const out = $('#sync-test-result');
-    if (!token) { out.textContent = 'Saisissez un token.'; out.className = 'settings__small err'; return; }
-    out.textContent = 'Test en cours…'; out.className = 'settings__small';
-    try {
-      const u = await testSyncConnection(token);
-      out.textContent = `✓ Connecté en tant que @${u.login}. Push initial vers le cloud…`;
+      out.textContent = p
+        ? `✓ Synchronisé : ${p.profiles} profils + ${p.images} images (${p.chunksPushed ?? p.chunks} fichier(s) envoyés).`
+        : '✓ Tout est déjà à jour.';
       out.className = 'settings__small ok';
-      await setSyncToken(token);
-      await setSyncToken(token);
-      // Vérifier si Gist existe déjà avec données → proposer pull au lieu de push
-      try {
-        const diag = await diagnoseSync();
-        if (diag.manifestProfiles > 0 && diag.chunkFilesCount > 0) {
-          // Gist contient déjà des data → pull plutôt que push
-          out.textContent = `✓ @${u.login} — Gist trouvé avec ${diag.manifestProfiles} profils + ${diag.chunkFilesCount} chunks d'images. Récupération…`;
-          const r = await syncPullNow({ replace: true });
-          out.textContent = `✓ Synchro réussie : ${r.profiles} profils + ${r.images} images chargés depuis le cloud.`;
-          // Recharger les profils dans STATE
-          STATE.profiles = await getAllProfiles();
-          STATE.imagesByProfile.clear();
-          for (const p of STATE.profiles) {
-            const imgs = await getProfileImages(p.id);
-            if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
-          }
-          buildFilterChips();
-          buildProfessionDatalist();
-          render();
-          window.__updateIgBulkCount?.();
-        } else if (diag.manifestProfiles > 0) {
-          // Gist a manifest mais pas de chunks
-          out.textContent = `⚠ Gist trouvé mais 0 chunks d'images. Push initial complet…`;
-          const r = await syncPushNow();
-          const imgMsg = r.images ? ` + ${r.images} images sur ${r.chunks} fichiers` : ' (sans images)';
-          out.textContent = `✓ @${u.login} — ${r.profiles} profils${imgMsg} sauvegardés (${r.sizeKb} Ko).`;
-        } else {
-          // Gist vide ou nouveau → push tout
-          out.textContent = `✓ @${u.login} — Push initial vers le cloud…`;
-          const r = await syncPushNow();
-          const imgMsg = r.images ? ` + ${r.images} images sur ${r.chunks} fichiers` : ' (sans images)';
-          out.textContent = `✓ @${u.login} — ${r.profiles} profils${imgMsg} sauvegardés (${r.sizeKb} Ko). Sync auto activée.`;
-        }
-      } catch (syncErr) {
-        out.textContent = `✓ @${u.login} connecté — mais sync initiale échouée : ${syncErr.message}`;
-      }
-      await setupAutoSync();
-      updateSyncPill();
-      updateSaveButton();
       refreshSettingsView();
     } catch (e) {
+      if (e.code === 'AUTH') {
+        $('#settings-dialog').close();
+        handleAuthFailure();
+        return;
+      }
       out.textContent = '✗ ' + e.message;
       out.className = 'settings__small err';
     }
   });
 
-  $('#sync-auto-toggle').addEventListener('change', async (e) => {
-    await setSyncAutoSync(e.target.checked);
-    if (e.target.checked) await setupAutoSync();
-  });
+  $('#cloud-diagnose-btn').addEventListener('click', () => doDiagnoseSync());
 
-  $('#sync-pull-btn').addEventListener('click', async () => {
-    try {
-      const ok = await confirmDialog({
-        title: 'Récupérer les données du cloud ?',
-        text: 'Cela remplacera vos profils locaux par ceux du Gist GitHub.',
-        okLabel: 'Récupérer',
-      });
-      if (!ok) return;
-      await syncPullNow({ replace: true });
-      STATE.profiles = await getAllProfiles();
-      STATE.imagesByProfile.clear();
-      for (const p of STATE.profiles) {
-        const imgs = await getProfileImages(p.id);
-        if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
-      }
-      buildFilterChips();
-      render();
-      toast('Profils récupérés depuis le cloud.', { type: 'ok' });
-      refreshSettingsView();
-    } catch (e) { toast('Pull échec : ' + e.message, { type: 'err' }); }
-  });
-
-  $('#sync-push-btn').addEventListener('click', async () => {
-    try {
-      const r = await syncPushNow();
-      toast(`${r.profiles ?? '?'} profils envoyés vers le cloud.`, { type: 'ok' });
-      refreshSettingsView();
-    } catch (e) { toast('Push échec : ' + e.message, { type: 'err' }); }
-  });
-
-  $('#sync-invite-btn').addEventListener('click', async () => {
-    try {
-      const link = await generateInviteLink();
-      const out = $('#sync-invite-out');
-      const help = $('#sync-invite-help');
-      out.value = link;
-      out.style.display = 'block';
-      help.style.display = 'block';
-      help.textContent = '✓ Copiez ce lien et ouvrez-le sur l\'autre appareil. Il configurera tout automatiquement (token + récupération des photos).';
-      help.className = 'settings__small ok';
-      // Auto-select pour copier facilement
-      out.focus();
-      out.select();
-      try {
-        await navigator.clipboard.writeText(link);
-        help.textContent = '✓ Lien copié dans le presse-papier ! Ouvrez-le sur l\'autre appareil.';
-      } catch {}
-    } catch (e) {
-      const help = $('#sync-invite-help');
-      help.style.display = 'block';
-      help.textContent = '✗ ' + e.message;
-      help.className = 'settings__small err';
-    }
-  });
-
-  $('#sync-disconnect-btn').addEventListener('click', async () => {
+  $('#cloud-lock-btn').addEventListener('click', async () => {
     const ok = await confirmDialog({
-      title: 'Déconnecter la synchronisation ?',
-      text: 'Vos données locales restent en place. Le token sera supprimé du navigateur.',
-      okLabel: 'Déconnecter',
+      title: 'Verrouiller cet appareil ?',
+      text: 'Les profils resteront lisibles, mais il faudra ressaisir le mot de passe pour modifier.',
+      okLabel: 'Verrouiller',
     });
     if (!ok) return;
-    await clearSyncConfig();
+    await lockDevice();
     updateSyncPill();
+    updateSaveButton();
     refreshSettingsView();
-    toast('Sync déconnectée.', { type: 'ok' });
+    toast('Appareil verrouillé.', { type: 'ok' });
   });
 
   // AI
@@ -2808,14 +2397,6 @@ function hookSettingsDialog() {
 }
 
 async function refreshSettingsView() {
-  const cfg = await getSyncConfig();
-  $('#sync-token-input').value = cfg.token || '';
-  $('#sync-auto-toggle').checked = cfg.autoSync;
-  const badge = $('#sync-status-badge');
-  badge.textContent = cfg.token ? 'Activée' : 'Désactivée';
-  badge.classList.toggle('ok', !!cfg.token);
-  $('#sync-last-info').textContent = cfg.lastSync ? `Dernière sync : ${new Date(cfg.lastSync).toLocaleString('fr-FR')}` : '';
-
   const aiKey = await getAiKey();
   const aiModel = await getAiModel();
   $('#ai-key-input').value = aiKey || '';
@@ -2829,14 +2410,14 @@ async function refreshSettingsView() {
   $('#microlink-key-status').textContent = mlKey ? '✓ Clé active.' : 'Mode anonyme (50 req/jour).';
   $('#microlink-key-status').className = mlKey ? 'settings__small ok' : 'settings__small';
 
-  // Cloud public
+  // Cloud (statut)
   const cloudCfg = await getCloudConfig();
-  $('#cloud-token-input').value = cloudCfg.token || '';
-  $('#cloud-auto-toggle').checked = cloudCfg.auto;
   const cloudBadge = $('#cloud-status-badge');
-  cloudBadge.textContent = cloudCfg.token ? 'Activé' : 'Désactivé';
+  cloudBadge.textContent = cloudCfg.token ? 'Déverrouillé' : 'Verrouillé';
   cloudBadge.classList.toggle('ok', !!cloudCfg.token);
-  $('#cloud-last-info').textContent = cloudCfg.lastSync ? `Dernière sync cloud : ${new Date(cloudCfg.lastSync).toLocaleString('fr-FR')}` : '';
+  $('#cloud-last-info').textContent = cloudCfg.lastSync
+    ? `Dernière synchronisation : ${new Date(cloudCfg.lastSync).toLocaleString('fr-FR')}`
+    : 'Jamais synchronisé depuis cet appareil.';
 }
 
 // ============= AI SCAN ON PROFILE =============

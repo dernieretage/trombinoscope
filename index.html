@@ -57,7 +57,7 @@
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&display=swap" />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&display=swap" />
 
-<link rel="stylesheet" href="styles.css?v=59" />
+<link rel="stylesheet" href="styles.css?v=60" />
 </head>
 <body data-theme="dark">
 
@@ -445,121 +445,25 @@
     </header>
     <div class="settings__body">
 
-      <!-- Cloud public (RECOMMANDÉ) -->
+      <!-- Synchronisation cloud (automatique) -->
       <section class="settings__section">
         <header>
-          <h3>☁️ Cloud public auto (recommandé)</h3>
-          <span class="settings__badge" id="cloud-status-badge">Désactivé</span>
+          <h3>☁️ Synchronisation</h3>
+          <span class="settings__badge" id="cloud-status-badge">—</span>
         </header>
         <p class="settings__hint">
-          <strong>Stockage dans VOTRE repo GitHub</strong> — accessible automatiquement depuis
-          n'importe quel appareil sans configuration. Pas de PAT à coller sur Chrome / mobile,
-          juste ouvrir le site → données + photos chargées au premier load.
+          Chaque ajout, modification ou suppression est <strong>enregistré automatiquement
+          dans le cloud</strong> et apparaît sur tous les appareils en quelques secondes.
+          Aucune configuration : sur un nouvel appareil, le mot de passe d'entrée suffit
+          à déverrouiller l'écriture.
         </p>
-        <div class="settings__cta">
-          <a class="btn btn--primary" href="https://github.com/settings/tokens/new?description=Trombinoscope%20cloud&scopes=public_repo" target="_blank" rel="noopener" style="text-decoration: none;">
-            ① Créer un token GitHub (scope public_repo)
-          </a>
-        </div>
-        <p class="settings__hint" style="margin-top: 12px;">
-          Cliquez sur « Generate token » sur la page GitHub qui s'ouvre, copiez le token et
-          collez-le ici :
-        </p>
-        <label class="field">
-          <span>② Token GitHub (commence par ghp_)</span>
-          <div style="display:flex; gap:6px;">
-            <input id="cloud-token-input" type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" />
-            <button type="button" class="btn btn--primary" id="cloud-test-btn">③ Activer le cloud</button>
-          </div>
-          <small id="cloud-test-result" class="settings__small"></small>
-        </label>
-        <div class="settings__row">
-          <label class="settings__check">
-            <input type="checkbox" id="cloud-auto-toggle" checked />
-            <span>Sauvegarde cloud automatique à chaque modification</span>
-          </label>
-          <div class="settings__actions">
-            <button type="button" class="btn btn--ghost" id="cloud-pull-btn">↓ Récupérer</button>
-            <button type="button" class="btn btn--ghost" id="cloud-push-btn">↑ Envoyer</button>
-            <button type="button" class="btn btn--danger" id="cloud-disconnect-btn">Déconnecter</button>
-          </div>
-        </div>
         <small class="settings__small" id="cloud-last-info"></small>
-        <hr class="menu__sep" style="margin: 14px 0;" />
-        <p class="settings__hint" style="margin-top: 0;">
-          📲 <strong>Pour modifier les profils depuis Chrome / mobile / autre appareil</strong> sans
-          recoller le token : générez ici un lien magique. L'autre appareil l'ouvre une fois
-          → le token cloud est configuré automatiquement et permet d'écrire les modifications.
-        </p>
-        <div class="settings__actions" style="margin-top: 8px; flex-wrap: wrap; gap: 8px;">
-          <button type="button" class="btn btn--primary" id="cloud-invite-btn">
-            📱 QR + lien pour autre appareil
-          </button>
-          <button type="button" class="btn btn--ghost" id="cloud-share-btn" hidden>
-            ↗ Partager (AirDrop / Mail / SMS)
-          </button>
+        <div class="settings__actions" style="margin-top: 10px; flex-wrap: wrap; gap: 8px;">
+          <button type="button" class="btn btn--primary" id="cloud-sync-now">↻ Synchroniser maintenant</button>
+          <button type="button" class="btn btn--ghost" id="cloud-diagnose-btn">Diagnostic</button>
+          <button type="button" class="btn btn--danger" id="cloud-lock-btn">Verrouiller cet appareil</button>
         </div>
-        <div id="cloud-qr-wrap" style="display:none; margin-top: 14px; text-align:center; padding: 16px; background: #fff; border-radius: var(--r-md);">
-          <canvas id="cloud-qr-canvas" style="max-width: 240px; width: 100%; height: auto; image-rendering: pixelated;"></canvas>
-          <p style="margin: 10px 0 0; color: #1d1a14; font-size: 13px; font-weight: 500;">Scanne avec l'autre appareil → cloud activé instantanément.</p>
-        </div>
-        <textarea id="cloud-invite-out" rows="3" readonly style="display:none; margin-top: 8px; width: 100%; font-family: ui-monospace, monospace; font-size: 11px; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); color: var(--text); word-break: break-all;"></textarea>
-        <small id="cloud-invite-help" class="settings__small" style="display:none; margin-top: 4px;"></small>
-      </section>
-
-      <!-- Sync GitHub Gist (legacy) -->
-      <section class="settings__section">
-        <header>
-          <h3>📦 Synchronisation Gist (mode privé, optionnel)</h3>
-          <span class="settings__badge" id="sync-status-badge">Désactivée</span>
-        </header>
-        <p class="settings__hint">
-          Sauvegarde automatique de tous vos profils + photos dans <strong>VOTRE</strong> compte GitHub
-          (gist privé). Pas de tiers, pas de serveur. Synchronise tous vos appareils.
-        </p>
-        <div class="settings__cta">
-          <a class="btn btn--primary" href="https://github.com/settings/tokens/new?description=Trombinoscope%20sync&scopes=gist" target="_blank" rel="noopener" style="text-decoration: none;">
-            ① Ouvrir GitHub pour créer un token (1 min)
-          </a>
-        </div>
-        <p class="settings__hint" style="margin-top: 12px;">
-          La page GitHub s'ouvre avec le scope <code>gist</code> déjà coché.
-          Choisissez une expiration (« No expiration » recommandé), cliquez « Generate token »,
-          puis <strong>copiez-collez le token ci-dessous</strong> :
-        </p>
-        <label class="field">
-          <span>② Personal Access Token (commence par ghp_)</span>
-          <div style="display:flex; gap:6px;">
-            <input id="sync-token-input" type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" />
-            <button type="button" class="btn btn--primary" id="sync-test-btn">③ Activer</button>
-          </div>
-          <small id="sync-test-result" class="settings__small"></small>
-        </label>
-        <div class="settings__row">
-          <label class="settings__check">
-            <input type="checkbox" id="sync-auto-toggle" checked />
-            <span>Sync automatique à chaque modification</span>
-          </label>
-          <div class="settings__actions">
-            <button type="button" class="btn btn--ghost" id="sync-pull-btn">↓ Récupérer</button>
-            <button type="button" class="btn btn--ghost" id="sync-push-btn">↑ Envoyer</button>
-            <button type="button" class="btn btn--danger" id="sync-disconnect-btn">Déconnecter</button>
-          </div>
-        </div>
-        <small class="settings__small" id="sync-last-info"></small>
-        <hr class="menu__sep" style="margin: 14px 0;" />
-        <p class="settings__hint" style="margin-top: 0;">
-          📲 <strong>Activer la sync sur un autre appareil</strong> : générez un lien à
-          ouvrir sur l'autre appareil (Chrome, téléphone, etc.) — il configurera tout
-          automatiquement et récupérera vos données + photos.
-        </p>
-        <div class="settings__actions" style="margin-top: 8px;">
-          <button type="button" class="btn btn--primary" id="sync-invite-btn">
-            🔗 Générer un lien d'invitation
-          </button>
-        </div>
-        <textarea id="sync-invite-out" rows="3" readonly style="display:none; margin-top: 8px; width: 100%; font-family: ui-monospace, monospace; font-size: 11px; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); color: var(--text); word-break: break-all;"></textarea>
-        <small id="sync-invite-help" class="settings__small" style="display:none; margin-top: 4px;"></small>
+        <small class="settings__small" id="cloud-sync-result" style="margin-top: 6px; display: block;"></small>
       </section>
 
       <!-- AI Scan -->
@@ -719,6 +623,6 @@
   </article>
 </template>
 
-<script type="module" src="js/app.js?v=59"></script>
+<script type="module" src="js/app.js?v=60"></script>
 </body>
 </html>
