@@ -293,6 +293,11 @@ const STATE = {
     doCloudPullAndRefresh({ silent: false, source: 'poll' }).catch(() => {});
   }, 30_000);
 
+  // File de scan photos IG : reprise auto au boot (+12 s pour laisser le cloud
+  // se poser) puis toutes les 10 min — couvre le retour de quota Microlink.
+  setTimeout(() => processIgQueue().catch(() => {}), 12_000);
+  setInterval(() => processIgQueue().catch(() => {}), 10 * 60_000);
+
   // Pull forcé quand la tab redevient visible (mobile : très important — l'app
   // peut rester en arrière-plan plusieurs minutes sans polling).
   document.addEventListener('visibilitychange', () => {
@@ -1251,6 +1256,7 @@ function hookEditForm() {
     }
     const id = data.id || uid();
     const existing = STATE.profiles.find(p => p.id === id);
+    const oldHandle = existing?.instagram || '';
     const profile = {
       ...(existing || {}),
       id,
@@ -1291,6 +1297,19 @@ function hookEditForm() {
     $('#edit-dialog').close();
     maybeSchedulePush();
     toast(existing ? 'Profil mis à jour.' : 'Profil créé.', { type: 'ok' });
+
+    // SCAN PHOTOS AUTO : nouveau profil avec IG → en file immédiatement.
+    // Handle CORRIGÉ sur un profil existant (cas « mauvais insta ») → on purge
+    // les anciennes photos (celles du mauvais compte) et on re-scanne.
+    if (!existing && profile.instagram) {
+      enqueueIgScan(profile.id);
+    } else if (existing && profile.instagram && profile.instagram !== oldHandle) {
+      await deleteProfileImages(profile.id);
+      STATE.imagesByProfile.delete(profile.id);
+      render();
+      enqueueIgScan(profile.id);
+      toast(`Handle corrigé → les photos de @${profile.instagram} arrivent…`, { type: 'info', timeout: 4000 });
+    }
     } finally {
       btn.dataset.busy = '';
       btn.disabled = false;
@@ -1599,6 +1618,96 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// ============= FILE DE SCAN PHOTOS INSTAGRAM =============
+// Objectif : toute fiche ajoutée avec un handle IG reçoit sa photo (et ses
+// posts) AUTOMATIQUEMENT, le plus vite possible. Si le quota Microlink est
+// épuisé (50 req/jour en anonyme), la file persiste et REPREND TOUTE SEULE
+// (pas d'action utilisateur : « les crédits se renouvellent » = on réessaie
+// après la fenêtre de blocage, et chaque jour le quota repart).
+const IG_QUEUE_KEY = 'ig_scan_queue';
+const IG_BLOCK_KEY = 'ig_quota_block_until';
+let igQueueRunning = false;
+
+async function enqueueIgScan(profileId) {
+  try {
+    const q = (await getMeta(IG_QUEUE_KEY)) || [];
+    if (!q.some(it => it.id === profileId)) {
+      q.push({ id: profileId, attempts: 0, nextAt: 0 });
+      await setMeta(IG_QUEUE_KEY, q);
+    }
+    processIgQueue().catch(() => {});
+  } catch {}
+}
+
+async function igQueueCount() {
+  try { return ((await getMeta(IG_QUEUE_KEY)) || []).length; } catch { return 0; }
+}
+
+async function processIgQueue() {
+  if (igQueueRunning) return;
+  igQueueRunning = true;
+  try {
+    for (let guard = 0; guard < 50; guard++) {
+      const now = Date.now();
+      const blockUntil = (await getMeta(IG_BLOCK_KEY)) || 0;
+      let q = (await getMeta(IG_QUEUE_KEY)) || [];
+      if (!q.length) break;
+      const idx = q.findIndex(it => (it.nextAt || 0) <= now);
+      if (idx === -1) break; // tout est en backoff → les relances périodiques s'en chargent
+      const item = q[idx];
+      const profile = STATE.profiles.find(p => p.id === item.id);
+      if (!profile || !profile.instagram) {
+        q.splice(idx, 1); await setMeta(IG_QUEUE_KEY, q); continue;
+      }
+      const quotaBlocked = now < blockUntil || isMicrolinkRateLimited();
+      let res;
+      try {
+        // Quota dispo → scan complet (photo + posts). Quota bloqué → au moins
+        // la photo de profil (voie sans quota), et le complet repassera après.
+        res = quotaBlocked
+          ? await importInstagramProfilePicOnly(profile, { silent: true })
+          : await importInstagramForProfile(profile, { silent: true });
+      } catch (e) { res = { added: 0, errors: [e.message] }; }
+
+      q = (await getMeta(IG_QUEUE_KEY)) || [];
+      const j = q.findIndex(it => it.id === item.id);
+      const rateLimited = isMicrolinkRateLimited() || (res.errors || []).some(e => /RATE_LIMITED/.test(String(e)));
+      if (rateLimited) {
+        const prevBlock = (await getMeta(IG_BLOCK_KEY)) || 0;
+        const newBlock = Date.now() + 3 * 3600 * 1000;
+        await setMeta(IG_BLOCK_KEY, newBlock);
+        if (prevBlock < Date.now()) {
+          toast('Quota photos Instagram atteint — la récupération REPREND AUTOMATIQUEMENT dans quelques heures. (Astuce : une clé Microlink gratuite dans Réglages augmente le quota.)', { type: 'warn', timeout: 8000 });
+        }
+        if (j >= 0) {
+          // la photo de profil a pu passer (voie sans quota) : on garde en file
+          // pour compléter les posts quand le quota revient.
+          q[j].nextAt = newBlock;
+          if (res.added > 0) q[j].picDone = true;
+        }
+      } else if (res.added > 0 && !quotaBlocked) {
+        if (j >= 0) q.splice(j, 1); // scan complet réussi → terminé
+      } else if (res.added > 0 && quotaBlocked) {
+        // photo OK, posts plus tard (fenêtre sûre même si le blocage vient du
+        // flag runtime et que IG_BLOCK_KEY n'était pas encore posé)
+        if (j >= 0) { q[j].picDone = true; q[j].nextAt = Math.max(blockUntil, Date.now() + 3 * 3600 * 1000); }
+      } else {
+        if (j >= 0) {
+          q[j].attempts = (q[j].attempts || 0) + 1;
+          if (q[j].attempts >= 6) q.splice(j, 1); // handle probablement invalide
+          else q[j].nextAt = Date.now() + Math.min(6, q[j].attempts) * 30 * 60 * 1000;
+        }
+      }
+      await setMeta(IG_QUEUE_KEY, q);
+      window.__updateIgBulkCount?.();
+      await new Promise(r => setTimeout(r, 600)); // throttle doux
+    }
+    render();
+  } finally {
+    igQueueRunning = false;
+  }
+}
+
 async function addImagesToProfile(profile, files) {
   const existing = await getProfileImages(profile.id);
   let nextIdx = existing.length;
@@ -1672,6 +1781,7 @@ function hookBulkDialog() {
       await bulkSaveProfiles(newProfiles);
       STATE.profiles.push(...newProfiles);
       maybeSchedulePush(); // les nouveaux profils partent au cloud (debounce 2,5 s)
+      for (const np of newProfiles) if (np.instagram) enqueueIgScan(np.id);
     }
     $('#bulk-dialog').close();
     ta.value = '';
@@ -2435,9 +2545,11 @@ async function refreshSettingsView() {
   const cloudBadge = $('#cloud-status-badge');
   cloudBadge.textContent = cloudCfg.token ? 'Déverrouillé' : 'Verrouillé';
   cloudBadge.classList.toggle('ok', !!cloudCfg.token);
-  $('#cloud-last-info').textContent = cloudCfg.lastSync
+  const igPending = await igQueueCount();
+  $('#cloud-last-info').textContent = (cloudCfg.lastSync
     ? `Dernière synchronisation : ${new Date(cloudCfg.lastSync).toLocaleString('fr-FR')}`
-    : 'Jamais synchronisé depuis cet appareil.';
+    : 'Jamais synchronisé depuis cet appareil.')
+    + (igPending ? ` · Photos IG en file : ${igPending}` : '');
 }
 
 // ============= AI SCAN ON PROFILE =============
@@ -2522,8 +2634,14 @@ document.addEventListener('click', async (e) => {
         updates[f] = v;
       }
     }
+    const prevIgHandle = lastAiProfile.instagram || '';
     Object.assign(lastAiProfile, updates);
     await saveProfile(lastAiProfile);
+    if (updates.instagram && updates.instagram !== prevIgHandle) {
+      await deleteProfileImages(lastAiProfile.id);
+      STATE.imagesByProfile.delete(lastAiProfile.id);
+      enqueueIgScan(lastAiProfile.id);
+    }
     maybeSchedulePush();
     buildFilterChips();
     buildProfessionDatalist();
