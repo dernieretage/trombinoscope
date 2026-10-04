@@ -15,10 +15,10 @@ import { getMeta, setMeta } from './store.js';
 
 // Coffre scellé par scripts/seal-vault.mjs — ne pas éditer à la main.
 const VAULT = {
-  ver: 1,
-  salt: 'ZXh6Y/Rdc1TVjqb1d4bUdg==',
-  iv: '+noXWbMnTEEAg/tv',
-  ct: '9YbM6AwfDa0dXORihO4aDXYwaHe2PCR3Ie8J4vlkU7gLKcCEpwjgCVJBjNx9ZlXfuD+/omXTKk/c2GjuBQIt4jbel8Hk1JdJ4X0lUqxEaqW5k3MuFnWEnBuVmiVrMRzTNMjFJpXcCE1cDGL0GA==',
+  ver: 2,
+  salt: 'iULmGkJaAYT09SUd39I4iw==',
+  iv: '1PkHLaffewXsuuEY',
+  ct: 'yRTFN3U7CRBnaAM6MZV2+8ld5OEUwX069TxslxYG9oCJy+jEsfQ25ctctBFbL/ZlD3T8xkrQFgU=',
   iter: 310000,
 };
 
