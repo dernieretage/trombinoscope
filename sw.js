@@ -1,6 +1,6 @@
 // Service worker — network-first pour les pages HTML (évite les ghost old data
 // après déploiement), cache-first pour CSS/JS statiques avec version-busting.
-const VERSION = 'trombinoscope-v62';
+const VERSION = 'trombinoscope-v63';
 const ASSETS = [
   './',
   './index.html',
@@ -37,6 +37,14 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   // bypass pour autres origines (Google Fonts, GitHub API, etc.) — réseau direct
   if (url.origin !== location.origin) return;
+
+  // DONNÉES CLOUD (manifest + chunks même-origine) : réseau pur, jamais de
+  // cache SW — des données périmées servies par un cache sont pires qu'une
+  // erreur franche (l'app a ses propres fallbacks raw/API).
+  if (url.pathname.includes('/data/cloud/')) {
+    e.respondWith(fetch(req, { cache: 'no-store' }));
+    return;
+  }
 
   // HTML + JS + CSS + manifest → NETWORK-FIRST : on prend toujours la version
   // fraîche du serveur, le cache ne sert que de secours hors-ligne. Ça élimine

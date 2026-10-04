@@ -2237,7 +2237,7 @@ function setupCloudListeners() {
         return;
       }
       // Quota ou erreur réseau temporaire = transitoire, on n'alarme pas
-      if (s.error && /Quota GitHub|Réseau injoignable/.test(s.error)) {
+      if (s.error && /Quota GitHub|Réseau injoignable|Synchronisation incomplète/.test(s.error)) {
         btn.classList.add('is-dirty');
         if (label) label.textContent = 'En attente';
         btn.title = 'Sauvegarde différée — réessai automatique.';
