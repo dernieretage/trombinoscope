@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "exportedAt": "2026-10-04T19:01:36.259Z",
+  "exportedAt": "2026-10-04T21:29:38.800Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -1456,6 +1456,27 @@
       "professions": [
         "Directeur de la photographie"
       ]
+    },
+    {
+      "id": "p_qkraw5khpmufvps6t",
+      "name": "Remi Ces Lav",
+      "professions": [
+        "Assistant réalisateur"
+      ],
+      "status": "",
+      "instagram": "remi.cblv",
+      "phone": "",
+      "email": "",
+      "website": "",
+      "location": "",
+      "rate": "",
+      "agency": "",
+      "lastContact": "",
+      "tags": [],
+      "projects": "",
+      "notes": "",
+      "createdAt": "2026-09-24T18:42:23.861Z",
+      "updatedAt": "2026-10-04T18:21:27.695Z"
     },
     {
       "id": "p_qmfk16s30muu5mabk",
