@@ -192,7 +192,7 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
   const tools = document.createElement('div');
   tools.className = 'profile__tools';
   const igBtn = profile.instagram ? `
-    <button class="iconbtn" data-act="fetch-ig" title="Importer photo & posts Instagram" aria-label="Importer Instagram">
+    <button class="iconbtn" data-act="fetch-ig" title="Re-scanner Instagram — remplace la photo et les posts par ceux de ce handle" aria-label="Re-scanner Instagram">
       <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="17.2" cy="6.8" r="1.1" fill="currentColor"/><path d="M5 19l4-3 3 2 5-4 2 1.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity=".6"/></svg>
     </button>` : '';
   const aiBtn = profile.instagram || profile.name ? `

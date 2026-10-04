@@ -150,31 +150,48 @@ function extractBioFromMarkdown(md) {
 
 // ============= URLs DES POSTS via DuckDuckGo =============
 
+/**
+ * Extrait les liens de posts AVEC leur titre depuis le markdown Jina
+ * ([titre](url)), et ne garde QUE ceux dont le titre mentionne le handle.
+ * C'était LE vecteur « mauvais compte » : la recherche texte DuckDuckGo
+ * matchait le handle n'importe où (légendes, tags d'autres comptes) et
+ * l'ancien filtre était un no-op → posts d'inconnus importés.
+ * Règle stricte : titre non vérifiable = post exclu. Mieux vaut zéro photo
+ * qu'une photo de la mauvaise personne.
+ */
+function extractVerifiedPostUrls(md, handle) {
+  const needle = handle.toLowerCase();
+  const out = new Set();
+  const linkRe = /\[([^\]]{0,300}?)\]\((https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\/[A-Za-z0-9_-]+)[^)]*\)/g;
+  let m;
+  while ((m = linkRe.exec(md)) !== null) {
+    const title = m[1].toLowerCase();
+    // Les titres IG indexés : « Nom (@handle) • Instagram photo… » ou
+    // « handle on Instagram: … » — on exige la mention exacte du handle.
+    if (title.includes('@' + needle) || title.includes(needle)) out.add(m[2]);
+  }
+  return [...out];
+}
+
 export async function fetchInstagramPostUrls(handle, limit = 9) {
   const h = cleanHandle(handle);
   if (!h) throw new Error('Handle vide.');
 
-  // DuckDuckGo retourne 9-10 résultats indexés site:instagram.com/p/
-  const ddgUrl = `https://duckduckgo.com/?q=${encodeURIComponent(`site:instagram.com/p/ ${h}`)}&ia=web`;
-  const md = await jinaGet(ddgUrl);
+  // DuckDuckGo, handle entre guillemets (match exact)
+  try {
+    const ddgUrl = `https://duckduckgo.com/?q=${encodeURIComponent(`site:instagram.com/p/ "${h}"`)}&ia=web`;
+    const md = await jinaGet(ddgUrl);
+    const verified = extractVerifiedPostUrls(md, h);
+    if (verified.length) return verified.slice(0, limit);
+  } catch { /* fallback Bing */ }
 
-  const posts = [...new Set(md.match(/https?:\/\/(?:www\.)?instagram\.com\/p\/[A-Za-z0-9_-]+/g) || [])];
-  const reels = [...new Set(md.match(/https?:\/\/(?:www\.)?instagram\.com\/reel\/[A-Za-z0-9_-]+/g) || [])];
-  const all = [...posts, ...reels];
-
-  // Garder ceux qui contiennent le handle (dans la légende ou url)
-  // (DDG peut parfois retourner des posts d'autres comptes)
-  const filtered = all.length ? all : [];
-  if (!filtered.length) {
-    // Fallback : Bing
-    try {
-      const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(`site:instagram.com/p/ ${h}`)}`;
-      const bingMd = await jinaGet(bingUrl);
-      const bingPosts = [...new Set(bingMd.match(/https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\/[A-Za-z0-9_-]+/g) || [])];
-      return bingPosts.slice(0, limit);
-    } catch { /* nothing */ }
-  }
-  return filtered.slice(0, limit);
+  // Fallback : Bing, même règle stricte de vérification
+  try {
+    const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(`site:instagram.com/p/ "${h}"`)}`;
+    const bingMd = await jinaGet(bingUrl);
+    const verified = extractVerifiedPostUrls(bingMd, h);
+    return verified.slice(0, limit);
+  } catch { return []; }
 }
 
 // ============= IMAGE D'UN POST via Microlink =============
