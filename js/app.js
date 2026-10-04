@@ -2152,6 +2152,7 @@ async function updateSyncPill(s) {
   }
 }
 
+let __lockedEditToastAt = 0;
 function maybeSchedulePush() {
   // Sauvegarde automatique : CHAQUE modification planifie un cycle
   // pull→merge→push (debounce 2,5 s). Rien à configurer.
@@ -2160,9 +2161,26 @@ function maybeSchedulePush() {
       scheduleCloudPush(2500);
       markDirty();
     } else {
-      // Appareil verrouillé : la modif reste locale et partira au prochain
-      // déverrouillage (syncCloud au unlock). On signale l'état.
+      // Appareil verrouillé : la modif reste LOCALE. On le dit FORT, avec le
+      // bouton pour déverrouiller — fini les modifs perdues en silence.
       markDirty();
+      const now = Date.now();
+      if (now - __lockedEditToastAt > 120_000) {
+        __lockedEditToastAt = now;
+        toast('⚠️ Modification NON synchronisée : cet appareil est verrouillé. Elle restera locale tant que le mot de passe n\'est pas saisi.', {
+          type: 'warn', timeout: 12000,
+          action: {
+            label: 'Entrer le mot de passe',
+            onClick: () => ensureAuthGate({
+              onUnlocked: () => {
+                updateSyncPill();
+                updateSaveButton();
+                syncCloud({ reason: 'unlock-from-locked-edit' }).catch(() => {});
+              },
+            }).catch(() => {}),
+          },
+        });
+      }
     }
   });
 }
