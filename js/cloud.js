@@ -574,7 +574,7 @@ export async function syncCloud({ reason = 'manual' } = {}) {
     const why = pull?.reason || pull?.error || `réseau (${pull?.failedChunks || '?'} fichier(s) injoignable(s))`;
     console.warn('[Cloud] Push différé : pull non abouti (', why, ') — réessai automatique dans 8 s.');
     emit({ status: 'error', error: 'Synchronisation incomplète (' + why + ') — réessai automatique…' });
-    if (!syncCycleQueued) {
+    if (!syncCycleQueued && navigator.onLine !== false) {
       syncCycleQueued = true;
       setTimeout(() => { syncCycleQueued = false; syncCloud({ reason: reason + '+retry-pull' }); }, 8000);
     }
