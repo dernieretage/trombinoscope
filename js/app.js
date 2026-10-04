@@ -1308,7 +1308,7 @@ function hookEditForm() {
       STATE.imagesByProfile.delete(profile.id);
       render();
       enqueueIgScan(profile.id);
-      toast(`Handle corrigé → les photos de @${profile.instagram} arrivent…`, { type: 'info', timeout: 4000 });
+      toast(`Handle corrigé → anciennes photos (mauvais compte) retirées. La vraie photo arrive via le robot — ou glisse-la sur la fiche.`, { type: 'info', timeout: 6000 });
     }
     } finally {
       btn.dataset.busy = '';
@@ -1516,7 +1516,7 @@ async function importInstagramForProfile(profile, { silent = false } = {}) {
       }
       maybeSchedulePush();
     } else if (!silent) {
-      toast(`@${profile.instagram} : aucune image récupérée. ${result.errors.join(' ; ')}`, { type: 'err', timeout: 6000 });
+      toast(`@${profile.instagram} : aucune image récupérée — les sources publiques Instagram sont quasi toutes fermées depuis fin 2026. Le robot (qui tourne sur le Mac du bureau) la récupérera, ou glisse une photo directement sur la fiche.`, { type: 'warn', timeout: 9000 });
     }
     return { added, errors: result.errors };
   } catch (e) {
