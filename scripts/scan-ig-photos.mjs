@@ -41,6 +41,28 @@ const UAS = [
 ];
 const pickUA = () => UAS[Math.floor(Math.random() * UAS.length)];
 
+// ---- Session Instagram (optionnelle mais désormais INDISPENSABLE) ----
+// Depuis l'automne 2026, l'endpoint web_profile_info exige une session
+// (401 anonyme, partout). Le cookie est lu depuis $IG_SESSION ou le fichier
+// local ~/Library/Application Support/trombinoscope/ig-session.txt
+// (format : la ligne Cookie complète, au minimum « sessionid=…; csrftoken=… »).
+import { homedir } from 'node:os';
+import { existsSync } from 'node:fs';
+function loadIgSession() {
+  let raw = (process.env.IG_SESSION || '').trim();
+  if (!raw) {
+    const f = join(homedir(), 'Library', 'Application Support', 'trombinoscope', 'ig-session.txt');
+    if (existsSync(f)) { try { raw = readFileSync(f, 'utf8').trim(); } catch {} }
+  }
+  if (!raw) return null;
+  const csrf = (raw.match(/csrftoken=([^;\s]+)/) || [])[1] || '';
+  return { cookie: raw, csrf };
+}
+const IG_SESSION = loadIgSession();
+// Avec session : UA desktop FIXE (une session liée à un UA stable = moins de flags)
+const SESSION_UA = UAS[1];
+
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // délai de base + jitter (jusqu'à +50%) pour ne pas cadencer mécaniquement
 const jitter = (base) => Math.round(base * (1 + Math.random() * 0.5));
@@ -83,19 +105,22 @@ function isGenericUrl(url) {
 // requête XHR same-origin depuis la page du profil (Referer + Sec-Fetch-Site).
 async function igApiPicUrl(handle) {
   const url = `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(handle)}`;
-  const res = await fetchT(url, {
-    headers: {
-      'X-IG-App-ID': IG_APP_ID,
-      'User-Agent': pickUA(),
-      'Accept': '*/*',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Referer': `https://www.instagram.com/${handle}/`,
-      'X-Requested-With': 'XMLHttpRequest',
-      'Sec-Fetch-Site': 'same-origin',
-      'Sec-Fetch-Mode': 'cors',
-      'Sec-Fetch-Dest': 'empty',
-    },
-  });
+  const headers = {
+    'X-IG-App-ID': IG_APP_ID,
+    'User-Agent': IG_SESSION ? SESSION_UA : pickUA(),
+    'Accept': '*/*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': `https://www.instagram.com/${handle}/`,
+    'X-Requested-With': 'XMLHttpRequest',
+    'Sec-Fetch-Site': 'same-origin',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Dest': 'empty',
+  };
+  if (IG_SESSION) {
+    headers['Cookie'] = IG_SESSION.cookie;
+    if (IG_SESSION.csrf) headers['X-CSRFToken'] = IG_SESSION.csrf;
+  }
+  const res = await fetchT(url, { headers });
   if (!res.ok) throw new HttpError(res.status, `api ${res.status}`);
   const json = await res.json();
   const user = json?.data?.user;
@@ -196,6 +221,9 @@ function writeCloud(manifest, allImages, oldChunkFiles) {
 }
 
 async function main() {
+  console.log(IG_SESSION
+    ? '🔐 Session Instagram chargée (mode authentifié).'
+    : '⚠ AUCUNE session Instagram : depuis fin 2026 l\'API répond 401 en anonyme. Dépose le cookie dans ~/Library/Application Support/trombinoscope/ig-session.txt');
   const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'));
   const profiles = manifest.profiles || [];
   let { images: allImages, files: oldChunkFiles, deduped } = readAllImages();
@@ -217,6 +245,17 @@ async function main() {
   });
   const removed = before - allImages.length;
   if (removed) console.log(`Logos supprimés : ${removed}`);
+
+  // FORCE_HANDLES="at.alia,autre" : purge les images existantes de ces
+  // handles (cas « mauvais compte scanné ») → re-fetch propre ci-dessous.
+  const forced = new Set(String(process.env.FORCE_HANDLES || '')
+    .split(',').map((x) => cleanHandle(x)).filter(Boolean));
+  if (forced.size) {
+    const forcedIds = new Set(profiles.filter((p) => forced.has(cleanHandle(p.instagram))).map((p) => p.id));
+    const b4 = allImages.length;
+    allImages = allImages.filter((im) => !forcedIds.has(im.profileId));
+    console.log(`Re-scan forcé : ${forced.size} handle(s), ${b4 - allImages.length} ancienne(s) image(s) purgée(s).`);
+  }
 
   const hasImage = new Set(allImages.map((im) => im.profileId));
   const candidates = profiles.filter((p) => p && p.id && p.instagram && !hasImage.has(p.id));
