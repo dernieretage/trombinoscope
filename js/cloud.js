@@ -109,7 +109,6 @@ async function ghApiCall(path, opts = {}, retry = 0) {
     }
     throw new Error('Réseau injoignable: ' + e.message);
   }
-  if (res.status === 401) throw new Error('Token GitHub invalide.');
   if (res.status === 403) {
     const remaining = res.headers.get('x-ratelimit-remaining');
     const reset = res.headers.get('x-ratelimit-reset');
@@ -123,7 +122,21 @@ async function ghApiCall(path, opts = {}, retry = 0) {
       err.waitSec = Math.round(wait / 1000);
       throw err;
     }
-    throw new Error('403 — le token n\'a pas le droit d\'écriture (fine-grained : permission « Contents : Read and write » requise).');
+  }
+  if (res.status === 401 || res.status === 403) {
+    // Clé morte (expirée/révoquée) ou droits perdus → AUTO-RÉPARATION : le
+    // coffre a peut-être été rescellé avec une clé fraîche ; on re-dérive le
+    // token depuis le mot de passe retenu, et on retente UNE fois.
+    if (retry === 0) {
+      try {
+        const { ensureFreshToken } = await import('./auth.js');
+        const r = await ensureFreshToken({ force: true });
+        if (r?.ok && r.changed) return ghApiCall(path, opts, retry + 1);
+      } catch {}
+    }
+    const err = new Error('Clé d\'écriture invalide ou expirée — ressaisissez le mot de passe.');
+    err.code = 'AUTH';
+    throw err;
   }
   if (res.status >= 500 && retry < 2) {
     await new Promise(r => setTimeout(r, 1500 * (retry + 1)));
@@ -198,29 +211,6 @@ async function listChunkFilesOnRemote() {
       .filter(it => /^trombinoscope-images-\d+\.json$/.test(it.name))
       .map(it => it.name);
   } catch { return []; }
-}
-
-// ============= TEST CONNECTION =============
-
-export async function testCloudConnection(token) {
-  // Vérifier que le token a accès au repo en écriture
-  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
-  const res = await fetch(url, {
-    headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' },
-  });
-  if (res.status === 401) throw new Error('Token invalide.');
-  if (res.status === 404) throw new Error('Repo introuvable ou pas d\'accès.');
-  if (!res.ok) throw new Error(`Erreur ${res.status}`);
-  const data = await res.json();
-  if (!data.permissions?.push) {
-    throw new Error('Le token n\'a pas le droit d\'écriture (besoin du scope "repo" ou "public_repo").');
-  }
-  // Vérifier branch gh-pages
-  const branchRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/branches/${BRANCH}`, {
-    headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' },
-  });
-  if (!branchRes.ok) throw new Error(`Branche ${BRANCH} introuvable.`);
-  return { repo: data.full_name, branch: BRANCH, scopes: res.headers.get('x-oauth-scopes') };
 }
 
 // ============= PUSH =============
@@ -655,58 +645,6 @@ export async function scheduleCloudPush(delayMs = 4000) {
       }
     }
   }, effectiveDelay);
-}
-
-// ============= LIEN D'INVITATION (partager le token entre devices) =============
-
-/**
- * Génère un lien d'invitation contenant le PAT cloud public en base64.
- * À ouvrir sur tout autre appareil → configure auto le cloud → permet
- * non seulement la lecture (déjà publique) mais aussi l'écriture
- * de modifications depuis ce device.
- */
-// Durée de validité d'un lien d'invitation magique (24h)
-const INVITE_LINK_TTL_MS = 24 * 60 * 60 * 1000;
-
-export async function generateCloudInviteLink() {
-  const token = await getMeta(META_TOKEN);
-  if (!token) throw new Error('Cloud non configuré — activez-le d\'abord.');
-  const payload = btoa(JSON.stringify({ ct: token, ts: Date.now() }));
-  const url = new URL(window.location.href);
-  url.searchParams.set('cloud', payload);
-  url.hash = '';
-  return url.toString();
-}
-
-/**
- * Au démarrage : si l'URL contient ?cloud=xxx, configure le cloud token
- * automatiquement. Le device pourra ensuite lire ET écrire le cloud public.
- * Le lien expire après 24h pour limiter les fuites accidentelles via historique.
- */
-export async function consumeCloudActivateParam() {
-  try {
-    const url = new URL(window.location.href);
-    const param = url.searchParams.get('cloud');
-    if (!param) return null;
-    // Nettoyer l'URL D'ABORD pour éviter que le PAT reste visible si on est
-    // interrompu par une erreur de parse (sécurité défensive).
-    url.searchParams.delete('cloud');
-    history.replaceState(null, '', url.toString());
-
-    const payload = JSON.parse(atob(param));
-    if (!payload.ct) return null;
-    // Vérifier l'expiration (24h)
-    if (payload.ts && Date.now() - payload.ts > INVITE_LINK_TTL_MS) {
-      const ageH = Math.round((Date.now() - payload.ts) / 3600000);
-      return { activated: false, error: `Lien expiré (${ageH}h). Demandez un nouveau lien depuis l'appareil source.` };
-    }
-    await setMeta(META_TOKEN, payload.ct);
-    await setMeta(META_AUTO, true);
-    return { activated: true };
-  } catch (e) {
-    console.error('[Cloud] consumeCloudActivateParam failed:', e.message);
-    return { activated: false, error: e.message };
-  }
 }
 
 // ============= DIAGNOSTIC =============

@@ -1,18 +1,30 @@
-// Porte d'entrée du Trombinoscope.
+// Porte d'entrée du Trombinoscope — v2 « clé auto-réparante ».
 //
 // Le mot de passe saisi sert de clé : il déchiffre (PBKDF2 + AES-256-GCM) le
 // token d'écriture GitHub embarqué ci-dessous. Mot de passe correct = le
 // déchiffrement réussit (le tag GCM valide) = l'appareil peut lire ET écrire.
 // Aucun token à coller, aucune configuration par appareil.
+//
+// v2 : le mot de passe est retenu sur l'appareil (outil interne). À chaque
+// lancement, le token est RE-DÉRIVÉ depuis le coffre courant. Conséquence :
+// quand la clé GitHub est renouvelée (scripts/seal-vault.mjs → nouveau coffre
+// déployé), tous les appareils récupèrent la nouvelle clé silencieusement,
+// sans re-saisie. Si le mot de passe change, la porte se re-présente.
 
 import { getMeta, setMeta } from './store.js';
 
+// Coffre scellé par scripts/seal-vault.mjs — ne pas éditer à la main.
 const VAULT = {
+  ver: 1,
   salt: 'ZXh6Y/Rdc1TVjqb1d4bUdg==',
   iv: '+noXWbMnTEEAg/tv',
   ct: '9YbM6AwfDa0dXORihO4aDXYwaHe2PCR3Ie8J4vlkU7gLKcCEpwjgCVJBjNx9ZlXfuD+/omXTKk/c2GjuBQIt4jbel8Hk1JdJ4X0lUqxEaqW5k3MuFnWEnBuVmiVrMRzTNMjFJpXcCE1cDGL0GA==',
   iter: 310000,
 };
+
+const AUTH_FLAG = 'auth_ok_v1';
+const META_PW = 'gate_pw';            // mot de passe retenu (outil interne)
+const META_VAULT_VER = 'gate_vault_ver'; // version du coffre au dernier déverrouillage
 
 function b64ToU8(b64) {
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -42,28 +54,74 @@ export async function tryUnlock(password) {
   }
 }
 
-// Le déverrouillage exige que le mot de passe ait été RÉELLEMENT saisi sur cet
-// appareil (flag dédié), pas seulement qu'un vieux token traîne dans l'IDB
-// (les appareils configurés à l'ancienne avaient des tokens hérités, parfois
-// périmés/sans droit d'écriture → la porte les remplace par le bon).
-const AUTH_FLAG = 'auth_ok_v1';
-
 export async function isUnlocked() {
   return !!(await getMeta(AUTH_FLAG)) && !!(await getMeta('cloud_repo_token'));
 }
 
 export async function lock() {
   await setMeta(AUTH_FLAG, null);
+  await setMeta(META_PW, null);
+  await setMeta(META_VAULT_VER, null);
   await setMeta('cloud_repo_token', null);
+}
+
+async function storeUnlock(password, token) {
+  await setMeta('cloud_repo_token', token);
+  await setMeta('cloud_auto', true);
+  await setMeta(AUTH_FLAG, true);
+  await setMeta(META_PW, password.trim());
+  await setMeta(META_VAULT_VER, VAULT.ver);
+}
+
+/**
+ * Auto-réparation : re-dérive le token depuis le coffre COURANT avec le mot de
+ * passe retenu. À appeler au boot (silencieux) et quand une écriture échoue en
+ * 401/403 (`force: true`).
+ *
+ * Retours :
+ *  - { ok:true, changed:boolean }  → token frais en place
+ *  - { locked:true }               → pas de mot de passe retenu, ou mot de passe
+ *                                    devenu invalide (coffre rescellé avec un
+ *                                    autre mot de passe) → appareil verrouillé,
+ *                                    il faut re-présenter la porte.
+ */
+export async function ensureFreshToken({ force = false } = {}) {
+  const pw = await getMeta(META_PW);
+  const curToken = await getMeta('cloud_repo_token');
+  const unlockedVer = await getMeta(META_VAULT_VER);
+
+  if (!pw) {
+    // Appareils d'avant v2 : un token hérité traîne mais pas de mot de passe
+    // retenu. Tant que le token marche, on ne dérange personne ; s'il meurt
+    // (force=true), on verrouille pour re-demander le mot de passe.
+    if (force) { await lock(); return { locked: true }; }
+    return curToken ? { ok: true, changed: false } : { locked: true };
+  }
+
+  if (!force && curToken && unlockedVer === VAULT.ver) {
+    return { ok: true, changed: false }; // rien à faire
+  }
+
+  const token = await tryUnlock(pw);
+  if (!token) {
+    // Le coffre a été rescellé avec un AUTRE mot de passe → re-saisie requise.
+    await lock();
+    return { locked: true };
+  }
+  const changed = token !== curToken;
+  await storeUnlock(pw, token);
+  return { ok: true, changed };
 }
 
 /**
  * Affiche la porte mot de passe si l'appareil n'est pas déjà déverrouillé.
  * Résout quand l'accès est acquis. onUnlocked est appelé uniquement lors d'un
  * NOUVEAU déverrouillage (pas si le token était déjà en place).
+ * `message` : ligne d'explication optionnelle (ex. après expiration de la clé).
  */
-export async function ensureAuthGate({ onUnlocked } = {}) {
+export async function ensureAuthGate({ onUnlocked, message } = {}) {
   if (await isUnlocked()) return { alreadyUnlocked: true };
+  if (document.getElementById('auth-gate')) return { alreadyShowing: true };
 
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
@@ -74,6 +132,7 @@ export async function ensureAuthGate({ onUnlocked } = {}) {
         <div class="authgate__mark">T</div>
         <h1 id="authgate-title" class="authgate__title">Trombinoscope</h1>
         <p class="authgate__sub">Facteur Humain — accès réservé</p>
+        ${message ? `<p class="authgate__msg">${message}</p>` : ''}
         <form class="authgate__form" autocomplete="off">
           <input type="password" class="authgate__input" placeholder="Mot de passe"
                  autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false"
@@ -97,11 +156,7 @@ export async function ensureAuthGate({ onUnlocked } = {}) {
       btn.textContent = 'Vérification…';
       const token = await tryUnlock(input.value);
       if (token) {
-        // Écrase tout ancien token hérité (potentiellement périmé/sans droit
-        // d'écriture) par celui du coffre, et marque l'appareil autorisé.
-        await setMeta('cloud_repo_token', token);
-        await setMeta('cloud_auto', true);
-        await setMeta(AUTH_FLAG, true);
+        await storeUnlock(input.value, token);
         overlay.classList.add('authgate--out');
         setTimeout(() => overlay.remove(), 350);
         try { onUnlocked?.(); } catch {}
