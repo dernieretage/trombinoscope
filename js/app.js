@@ -1333,6 +1333,7 @@ async function importInstagramProfilePicOnly(profile, { silent = false } = {}) {
     await saveProfile(profile);
     const imgs = await getProfileImages(profile.id);
     STATE.imagesByProfile.set(profile.id, imgs);
+    maybeSchedulePush();
     return { added: 1, errors: [] };
   } catch (e) {
     return { added: 0, errors: [e.message] };
@@ -1670,6 +1671,7 @@ function hookBulkDialog() {
     if (newProfiles.length) {
       await bulkSaveProfiles(newProfiles);
       STATE.profiles.push(...newProfiles);
+      maybeSchedulePush(); // les nouveaux profils partent au cloud (debounce 2,5 s)
     }
     $('#bulk-dialog').close();
     ta.value = '';
