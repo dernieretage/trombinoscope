@@ -1,0 +1,20 @@
+{
+ "version": 1,
+ "source": "Mise à jour 3 — Instagram Tim Smith et Mikey Rossiter",
+ "profiles": [
+  {
+   "name": "Tim Smith",
+   "instagram": "timotheous",
+   "replace": {
+    "notes": "Senior colourist chez Rascal (Londres)."
+   }
+  },
+  {
+   "name": "Mikey Rossiter",
+   "instagram": "mikolour",
+   "replace": {
+    "notes": "Contact via Rare Medium (production@raremedium.tv). Instagram du studio : @raremedium.tv."
+   }
+  }
+ ]
+}
