@@ -7,10 +7,10 @@
 | Catégorie | Nb | Intitulés regroupés |
 |---|---|---|
 | **Assistant décorateur** | 15 | 1er Assistant décorateur, 1ère assistante décoratrice, 2e assistant décorateur, 2eme Assistant Décorateur, Assistant Décorateur, Assistant décorateur, Assistant décoration, Assistante décoratrice, Stagiaire décorateur |
-| **Machiniste** | 15 | Chef Machiniste, Machiniste, Machiniste stagiaire, Stagiaire Machiniste |
-| **Électro** | 14 | Chef électricien, Stagiaire électricien, Électricien |
+| **Machiniste** | 13 | Chef Machiniste, Machiniste, Machiniste stagiaire, Stagiaire Machiniste |
 | **Support régie** | 12 | Auxiliaire Régie, Régisseur, Régisseur Adjoint, Régisseur auxiliaire, Stagiaire Régisseur |
 | **Second assistant caméra** | 11 | 2nd Assistant Caméra, 2nd assistant cam, 2nd assistant caméra, 2nd assistant caméra / action cam, 3e assistant caméra, Assistant cam, Stagiaire caméra |
+| **Électro** | 10 | Chef électricien, Stagiaire électricien, Électricien |
 | **Maquilleur** | 9 | Assistant Maquilleur-Coiffeur, Assistante make-up, Chef Maquilleur-Coiffeur, Make-up artist, Maquilleuse, Renfort Maquilleur-Coiffeur |
 | **Coiffeur** | 7 | 1er assistant coiffeur, 2nd Assistant Coiffeur, Assistant Maquilleur-Coiffeur, Chef Maquilleur-Coiffeur, Coiffeur, Renfort Maquilleur-Coiffeur |
 | **Second assistant réalisateur** | 7 | 1er Assistant Réalisateur, 1ère assistante réalisatrice, 2e assistant réalisateur, 2nd Assistant Réalisateur, 2nd assistant réalisateur (stagiaire), Coordinateur de production / 2nd assistant réalisateur |
@@ -19,6 +19,7 @@
 | **Opérateur steadicam** | 5 | Steadicam, Steadicamer |
 | **Premier assistant caméra** | 5 | 1er Assistant Caméra, 1er assistant caméra |
 | **Chef décorateur** | 4 | Chef Décorateur, Chef décorateur, Cheffe Décoratrice, Cheffe décoratrice |
+| **Chef électro** | 4 |  |
 | **Styliste** | 4 | Styliste, Styliste danseurs |
 | **Cadreur** | 3 | Cadreur - Drone, Cadreur / pareur, Cadreuse |
 | **Coordinateur de production** | 3 | Coordinateur de production / 2nd assistant réalisateur, Coordinatrice de production |
@@ -28,6 +29,7 @@
 | **Étalonneur** | 3 | Étalonnage |
 | **Assistant photo** | 2 | 2e assistant photo / digit, Assistant photo / lumière / digit |
 | **Assistant styliste** | 2 | Assistante styliste |
+| **Chef machiniste** | 2 |  |
 | **Directeur de production** | 2 | Directrice de Production, Directrice de production |
 | **Ingénieur du son** | 2 | Ingénieur du son |
 | **Monteur** | 2 | Monteur, Monteur capsule |
@@ -139,13 +141,18 @@
 
 | Nom | Catégorie | Poste précis | Instagram | Téléphone | E-mail | Collaboration |
 |---|---|---|---|---|---|---|
+| Guillaume Grandin | Chef machiniste | Chef Machiniste | @guillaumegrandin | 06 44 03 34 11 | g-grandin@hotmail.fr | Yame |
+| Zuy Viraphong | Chef machiniste | Chef Machiniste | @zuyviraphong | 06 17 44 62 20 | zuy.viraphong@outlook.fr | « Freaks » (Yseult) |
+| David Jeune | Chef électro | Chef électricien | @daviduhhh | 06 50 54 33 02 | davidjeune.pro@gmail.com | « Freaks » (Yseult) |
+| Eric Courtecuisse | Chef électro | Chef électricien | @ericcourtecuisse | 06 21 07 28 47 | courtecuisse@me.com | Yame |
+| Hugo Mesnil | Chef électro | Chef électricien |  | 06 67 61 52 62 |  | Arthur Ely – Live session |
+| Lola Protar | Chef électro | Chef électricien | @lolavpr | 06 67 11 84 02 | lolaprotar@gmail.com | Ditter |
 | Antonin Pontonnier | Conducteur de groupe | Conducteur de groupe |  | 06 74 30 80 79 | antonin.p10@hotmail.fr | JO – Campagne France 2024 |
 | Adrien Guiot | Machiniste | Machiniste | @adrien_gv | 07 81 83 05 51 | adrien.guiotvalentin@gmail.com | « Freaks » (Yseult) |
 | Brice Bourdet | Machiniste | Machiniste | @bbryce93170 | 06 51 81 69 45 | bricegrip@gmail.com | Ditter |
 | David Bigard | Machiniste | Machiniste |  | 06 45 91 08 03 | david.bigard@gmail.com | JO – Campagne France 2024 |
 | François Perrault-Alix | Machiniste | Chef Machiniste |  | 06 07 34 18 44 | fpalix@gmail.com | JO – Campagne France 2024 |
 | Gaspard Zimmer | Machiniste | Stagiaire Machiniste |  | 06 21 38 63 18 | gaspzimmer@gmail.com | « Freaks » (Yseult) |
-| Guillaume Grandin | Machiniste | Chef Machiniste | @guillaumegrandin | 06 44 03 34 11 | g-grandin@hotmail.fr | Yame |
 | Jean-Charles Etien | Machiniste | Machiniste |  | 06 77 13 62 58 | jean.lrc@hotmail.fr | JO – Campagne France 2024 |
 | Lorenzo Pordone | Machiniste | Machiniste | @_lorenzo_prd | 07 62 96 79 89 | lorenzo.productions1@gmail.com | Yame |
 | Morgan Dandre | Machiniste | Machiniste | @gunmordogg | 06 20 97 93 91 | morgan.dandre@gmail.com | Yame |
@@ -154,15 +161,10 @@
 | Noé Pasquier | Machiniste | Machiniste stagiaire |  | 07 86 92 01 33 |  | Ben Mazué |
 | Sayo Bapst | Machiniste | Machiniste | @sayomeh | 07 85 89 41 88 | sayo.bapst@gmail.com | « Freaks » (Yseult) |
 | Timothe Pessoa | Machiniste | Stagiaire Machiniste |  | 07 82 25 75 11 | timothepessoa7@gmail.com | « Freaks » (Yseult) |
-| Zuy Viraphong | Machiniste | Chef Machiniste | @zuyviraphong | 06 17 44 62 20 | zuy.viraphong@outlook.fr | « Freaks » (Yseult) |
 | David Pacholczyk | Rigger + Artificier | Rigger / artificier | @dav_fxr | 06 60 27 88 52 | funxriders@gmail.com | Ditter |
 | Basile Barniske | Électro | Chef électricien |  | 06 76 23 43 32 | b.barniske@gmail.com | JO – Campagne France 2024 |
-| David Jeune | Électro | Chef électricien | @daviduhhh | 06 50 54 33 02 | davidjeune.pro@gmail.com | « Freaks » (Yseult) |
-| Eric Courtecuisse | Électro | Chef électricien | @ericcourtecuisse | 06 21 07 28 47 | courtecuisse@me.com | Yame |
 | François Auclair | Électro | Électricien |  | 06 79 20 16 49 | f.auclair@wanadoo.fr | JO – Campagne France 2024 |
-| Hugo Mesnil | Électro | Chef électricien |  | 06 67 61 52 62 |  | Arthur Ely – Live session |
 | Léo Exbrayat | Électro | Électricien | @zbrayat | 06 81 50 21 12 | leo.exbrayat@live.fr | Yame |
-| Lola Protar | Électro | Chef électricien | @lolavpr | 06 67 11 84 02 | lolaprotar@gmail.com | Ditter |
 | Louis Cordier | Électro | Stagiaire électricien | @cor.louis | 07 82 82 08 41 | louiscordier2637@gmail.com | « Freaks » (Yseult) |
 | Manon Bouron | Électro | Électricien | @manon.bouron | 06 26 10 71 11 | manonbouron33@gmail.com | Ditter |
 | Romain Carlioz | Électro | Électricien | @romaincarlioz | 06 67 86 30 96 | romain@carlioz.fr | Yame |
