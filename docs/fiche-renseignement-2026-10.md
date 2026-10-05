@@ -8,7 +8,7 @@
 |---|---|---|
 | **Assistant décorateur** | 15 | 1er Assistant décorateur, 1ère assistante décoratrice, 2e assistant décorateur, 2eme Assistant Décorateur, Assistant Décorateur, Assistant décorateur, Assistant décoration, Assistante décoratrice, Stagiaire décorateur |
 | **Machiniste** | 15 | Chef Machiniste, Machiniste, Machiniste stagiaire, Stagiaire Machiniste |
-| **Électricien** | 14 | Chef électricien, Stagiaire électricien, Électricien |
+| **Électro** | 14 | Chef électricien, Stagiaire électricien, Électricien |
 | **Support régie** | 12 | Auxiliaire Régie, Régisseur, Régisseur Adjoint, Régisseur auxiliaire, Stagiaire Régisseur |
 | **Second assistant caméra** | 11 | 2nd Assistant Caméra, 2nd assistant cam, 2nd assistant caméra, 2nd assistant caméra / action cam, 3e assistant caméra, Assistant cam, Stagiaire caméra |
 | **Maquilleur** | 9 | Assistant Maquilleur-Coiffeur, Assistante make-up, Chef Maquilleur-Coiffeur, Make-up artist, Maquilleuse, Renfort Maquilleur-Coiffeur |
@@ -156,20 +156,20 @@
 | Timothe Pessoa | Machiniste | Stagiaire Machiniste |  | 07 82 25 75 11 | timothepessoa7@gmail.com | « Freaks » (Yseult) |
 | Zuy Viraphong | Machiniste | Chef Machiniste | @zuyviraphong | 06 17 44 62 20 | zuy.viraphong@outlook.fr | « Freaks » (Yseult) |
 | David Pacholczyk | Rigger + Artificier | Rigger / artificier | @dav_fxr | 06 60 27 88 52 | funxriders@gmail.com | Ditter |
-| Basile Barniske | Électricien | Chef électricien |  | 06 76 23 43 32 | b.barniske@gmail.com | JO – Campagne France 2024 |
-| David Jeune | Électricien | Chef électricien | @daviduhhh | 06 50 54 33 02 | davidjeune.pro@gmail.com | « Freaks » (Yseult) |
-| Eric Courtecuisse | Électricien | Chef électricien | @ericcourtecuisse | 06 21 07 28 47 | courtecuisse@me.com | Yame |
-| François Auclair | Électricien | Électricien |  | 06 79 20 16 49 | f.auclair@wanadoo.fr | JO – Campagne France 2024 |
-| Hugo Mesnil | Électricien | Chef électricien |  | 06 67 61 52 62 |  | Arthur Ely – Live session |
-| Léo Exbrayat | Électricien | Électricien | @zbrayat | 06 81 50 21 12 | leo.exbrayat@live.fr | Yame |
-| Lola Protar | Électricien | Chef électricien | @lolavpr | 06 67 11 84 02 | lolaprotar@gmail.com | Ditter |
-| Louis Cordier | Électricien | Stagiaire électricien | @cor.louis | 07 82 82 08 41 | louiscordier2637@gmail.com | « Freaks » (Yseult) |
-| Manon Bouron | Électricien | Électricien | @manon.bouron | 06 26 10 71 11 | manonbouron33@gmail.com | Ditter |
-| Romain Carlioz | Électricien | Électricien | @romaincarlioz | 06 67 86 30 96 | romain@carlioz.fr | Yame |
-| Simon Petillon-Chenitzer | Électricien | Électricien |  | 06 87 91 48 30 | simonsachapc@gmail.com | JO – Campagne France 2024 |
-| Vincent Taberlet | Électricien | Électricien |  | 06 19 08 03 60 | vincent.taberlet@live.fr | JO – Campagne France 2024 |
-| William Seris | Électricien | Stagiaire électricien |  | 06 86 41 46 14 | william.seris@orange.fr | « Freaks » (Yseult) |
-| Yvain Li | Électricien | Électricien | @feiika_ | 06 04 47 26 82 | feilex91@outlook.fr | Ditter |
+| Basile Barniske | Électro | Chef électricien |  | 06 76 23 43 32 | b.barniske@gmail.com | JO – Campagne France 2024 |
+| David Jeune | Électro | Chef électricien | @daviduhhh | 06 50 54 33 02 | davidjeune.pro@gmail.com | « Freaks » (Yseult) |
+| Eric Courtecuisse | Électro | Chef électricien | @ericcourtecuisse | 06 21 07 28 47 | courtecuisse@me.com | Yame |
+| François Auclair | Électro | Électricien |  | 06 79 20 16 49 | f.auclair@wanadoo.fr | JO – Campagne France 2024 |
+| Hugo Mesnil | Électro | Chef électricien |  | 06 67 61 52 62 |  | Arthur Ely – Live session |
+| Léo Exbrayat | Électro | Électricien | @zbrayat | 06 81 50 21 12 | leo.exbrayat@live.fr | Yame |
+| Lola Protar | Électro | Chef électricien | @lolavpr | 06 67 11 84 02 | lolaprotar@gmail.com | Ditter |
+| Louis Cordier | Électro | Stagiaire électricien | @cor.louis | 07 82 82 08 41 | louiscordier2637@gmail.com | « Freaks » (Yseult) |
+| Manon Bouron | Électro | Électricien | @manon.bouron | 06 26 10 71 11 | manonbouron33@gmail.com | Ditter |
+| Romain Carlioz | Électro | Électricien | @romaincarlioz | 06 67 86 30 96 | romain@carlioz.fr | Yame |
+| Simon Petillon-Chenitzer | Électro | Électricien |  | 06 87 91 48 30 | simonsachapc@gmail.com | JO – Campagne France 2024 |
+| Vincent Taberlet | Électro | Électricien |  | 06 19 08 03 60 | vincent.taberlet@live.fr | JO – Campagne France 2024 |
+| William Seris | Électro | Stagiaire électricien |  | 06 86 41 46 14 | william.seris@orange.fr | « Freaks » (Yseult) |
+| Yvain Li | Électro | Électricien | @feiika_ | 06 04 47 26 82 | feilex91@outlook.fr | Ditter |
 
 ### Son (4)
 
