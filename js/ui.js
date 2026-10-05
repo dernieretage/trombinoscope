@@ -12,6 +12,39 @@ function professionsOf(p) {
 // AVATAR / IMAGE
 // =================================================================
 
+// Largeur réelle (pixels) de chaque image, mesurée une fois par URL d'objet
+// (une URL = un blob précis : une photo remplacée a une nouvelle URL).
+const naturalWidths = new Map();
+function naturalWidthOf(url) {
+  if (naturalWidths.has(url)) return Promise.resolve(naturalWidths.get(url));
+  return new Promise((resolve) => {
+    const im = new Image();
+    im.onload = () => { naturalWidths.set(url, im.naturalWidth); resolve(im.naturalWidth); };
+    im.onerror = () => resolve(0);
+    im.src = url;
+  });
+}
+
+/**
+ * Vignette basse résolution (ex. 100 px servie par Instagram) affichée en
+ * grand : on pose un léger flou proportionnel à l'agrandissement plutôt que
+ * de montrer les pixels — dans l'esprit « liquid glass » de l'interface.
+ */
+function markLowRes(el, url) {
+  el.classList.remove('is-lowres');
+  el.style.removeProperty('--lowres-blur');
+  naturalWidthOf(url).then((nw) => {
+    if (!nw || !el.style.backgroundImage.includes(url)) return; // image changée entre-temps
+    requestAnimationFrame(() => {
+      const shown = (el.clientWidth || 320) * (window.devicePixelRatio || 1);
+      const ratio = shown / nw;
+      if (ratio <= 1.6) return;
+      el.classList.add('is-lowres');
+      el.style.setProperty('--lowres-blur', Math.min(2.6, 0.35 * ratio).toFixed(2) + 'px');
+    });
+  });
+}
+
 // Met à jour le style avatar/image d'un élément
 export function applyAvatar(el, profile, firstImage) {
   const a = avatarFor(profile.name, profile.instagram);
@@ -22,8 +55,10 @@ export function applyAvatar(el, profile, firstImage) {
     el.style.backgroundImage = `url("${url}")`;
     el.style.setProperty('--avatar-gradient', 'none');
     el.textContent = '';
+    markLowRes(el, url);
   } else {
     el.style.backgroundImage = '';
+    el.classList.remove('is-lowres');
     el.textContent = a.initials;
   }
 }
