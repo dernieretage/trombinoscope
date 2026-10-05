@@ -1986,7 +1986,13 @@ function updateSyncUi(status) {
   let text = d.label;
   let title = d.title;
   if (s.state === 'off' && syncNote) { text = 'Hors sync'; title = syncNote; }
-  if ((s.state === 'offline' || s.state === 'saving') && s.pending) text += ` (${s.pending})`;
+  if (s.state === 'connecting' && s.pending) {
+    // Serveur injoignable (réseau coupé sans que le navigateur le sache) :
+    // on montre ce qui attend plutôt qu'un « Connexion… » muet.
+    btn.classList.remove('is-syncing'); btn.classList.add('is-dirty');
+    text = 'En attente'; title = `Serveur injoignable — ${s.pending} modification(s) partiront dès que la connexion revient.`;
+  }
+  if ((s.state === 'offline' || s.state === 'saving' || s.state === 'connecting') && s.pending) text += ` (${s.pending})`;
   if (s.state === 'error') title += ' : ' + humanSyncError(s.error);
   if (label) label.textContent = text;
   btn.title = title;

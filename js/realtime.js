@@ -20,7 +20,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/fireba
 import {
   initializeFirestore, memoryLocalCache, connectFirestoreEmulator,
   collection, doc, onSnapshot, setDoc, deleteDoc, getDoc, getDocs, getDocsFromServer,
-  query, where, runTransaction, waitForPendingWrites,
+  query, where, runTransaction, waitForPendingWrites, disableNetwork, enableNetwork,
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 import { getAuth, signInAnonymously, connectAuthEmulator } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import { FIREBASE_CONFIG } from './firebase-config.js';
@@ -415,6 +415,10 @@ async function processSnapshot(snap) {
     firstServerSyncDone = true;
     await reconcileAll();
     notifyChanged();
+  } else if (connected && !wasConnected) {
+    // Retour du serveur après une coupure : on renvoie tout de suite ce qui attend.
+    attempts.clear();
+    await reconcileAll();
   }
   if (wasConnected !== connected || !wasConnected) emitStatus();
 }
@@ -481,10 +485,14 @@ export async function startRealtime({ spaceId: space, onChange } = {}) {
     connectAuthEmulator(auth, `http://${cfg.emulator.host || '127.0.0.1'}:${cfg.emulator.auth || 9099}`, { disableWarnings: true });
   }
   onLocalChange(({ id }) => { schedulePush(id); refreshPendingCount(); });
-  window.addEventListener('online', () => { emitStatus(); if (signedIn) reconcileAll(); else ensureSignedIn(); });
+  window.addEventListener('online', () => { emitStatus(); attempts.clear(); if (signedIn) reconcileAll(); else ensureSignedIn(); });
   window.addEventListener('offline', () => emitStatus());
   document.addEventListener('visibilitychange', () => { if (!document.hidden && connected) reconcileAll(); });
   setInterval(() => { if (connected && !document.hidden) reconcileAll(); }, 60_000);
+  if (IS_DEV_HOST) {
+    // Outils de test (serveur de développement uniquement) : simuler une coupure réseau.
+    window.__rtTest = { offline: () => disableNetwork(db), online: () => enableNetwork(db), remote };
+  }
   emitStatus();
   refreshPendingCount();
   await ensureSignedIn();
