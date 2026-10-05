@@ -67,8 +67,9 @@ export function mergeIncoming(existing, inc) {
   // que soit son contenu actuel — ex. « passe X de Machiniste à Chef machiniste ».
   for (const [k, ops] of Object.entries(inc.arrayOps || {})) {
     if (META.has(k)) continue;
+    const rename = Object.fromEntries(Object.entries(ops.rename || {}).map(([a, b]) => [a.toLowerCase(), b]));
     const rm = new Set((ops.remove || []).map((x) => String(x).toLowerCase()));
-    let list = (next[k] || []).filter((x) => !rm.has(String(x).toLowerCase()));
+    let list = (next[k] || []).map((x) => rename[String(x).toLowerCase()] ?? x).filter((x) => !rm.has(String(x).toLowerCase()));
     list = unionCI(list, ops.add || []);
     if (JSON.stringify(list) !== JSON.stringify(next[k] || [])) { next[k] = list; if (!changed.includes(k)) changed.push(k); }
   }
