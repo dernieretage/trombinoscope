@@ -57,7 +57,7 @@
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&display=swap" />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&display=swap" />
 
-<link rel="stylesheet" href="styles.css?v=69" />
+<link rel="stylesheet" href="styles.css?v=70" />
 </head>
 <body data-theme="dark">
 
@@ -124,6 +124,10 @@
     <div class="filterbar__inner">
       <div class="chips" id="profession-chips" role="tablist" aria-label="Filtrer par métier">
         <!-- chips injectées en JS -->
+      </div>
+      <div class="tag-bar pro-suggest" id="pro-suggest" hidden aria-live="polite">
+        <span class="tag-bar__label">Métier :</span>
+        <!-- suggestions injectées en JS -->
       </div>
       <div class="tag-bar" id="tag-bar" hidden>
         <span class="tag-bar__label">Tags actifs :</span>
@@ -454,7 +458,7 @@
           du réseau. Aucune configuration : sur un nouvel appareil, le mot de passe d'entrée suffit.
         </p>
         <small class="settings__small" id="cloud-last-info"></small>
-        <small class="settings__small">Version de l'app : <strong id="app-version">v69</strong></small>
+        <small class="settings__small">Version de l'app : <strong id="app-version">v70</strong></small>
         <div class="settings__actions" style="margin-top: 10px; flex-wrap: wrap; gap: 8px;">
           <button type="button" class="btn btn--primary" id="cloud-sync-now">↻ Synchroniser maintenant</button>
           <button type="button" class="btn btn--ghost" id="cloud-diagnose-btn">Diagnostic</button>
@@ -622,6 +626,6 @@
   </article>
 </template>
 
-<script type="module" src="js/app.js?v=69"></script>
+<script type="module" src="js/app.js?v=70"></script>
 </body>
 </html>
