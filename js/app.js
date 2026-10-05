@@ -1,9 +1,9 @@
 // Orchestrateur principal du Trombinoscope
 import {
-  getAllProfiles, saveProfile, deleteProfile, bulkSaveProfiles,
+  getAllProfiles, saveProfile, patchProfile, deleteProfile, bulkSaveProfiles,
   saveImage, getProfileImages, deleteImage, deleteProfileImages,
   exportAll, importAll, getMeta, setMeta, estimateUsage, uid,
-  cleanupOrphanImages,
+  cleanupOrphanImages, clearAllProfilesAndImages, sameValue,
 } from './store.js';
 import { SEED_PROFILES, PROFESSIONS, STATUSES } from './seed.js';
 import {
@@ -16,12 +16,7 @@ import {
   toast, confirmDialog,
 } from './ui.js';
 import { fetchInstagramProfile, fetchInstagramProfilePicOnly, fetchImageAsBlob, isMicrolinkRateLimited, resetMicrolinkRateLimit } from './ig.js';
-import {
-  getCloudConfig, setupCloudAutoPull,
-  scheduleCloudPush, onCloudStateChange, diagnoseCloud,
-  syncCloud, cloudProfileCount,
-} from './cloud.js';
-import { ensureAuthGate, ensureFreshToken, lock as lockDevice } from './auth.js';
+import { ensureAuthGate, getSpaceId, migrateLegacyUnlock, lock as lockDevice } from './auth.js';
 import {
   getAiKey, setAiKey, getAiModel, setAiModel,
   isAiConfigured, scanProfileWithAi, testAiConnection,
@@ -70,153 +65,15 @@ const STATE = {
   STATE.filters.sort = await getMeta('sort') || 'favoris';
   STATE.filters.profession = await getMeta('profession') || 'all';
 
-  // PORTE D'ENTRÉE : mot de passe → déverrouille la clé d'écriture pour CET
-  // appareil (plus aucun token à configurer, sur aucun appareil). Le boot
-  // (pull public en lecture) continue en dessous pendant la saisie.
-  ensureAuthGate({
-    onUnlocked: () => {
-      updateSyncPill();
-      updateSaveButton();
-      toast('✓ Accès déverrouillé — cet appareil peut maintenant modifier le trombinoscope.', { type: 'ok', timeout: 4500 });
-      // Pousser d'éventuelles données locales en attente (profil ajouté avant
-      // le déverrouillage, par exemple).
-      syncCloud({ reason: 'unlock' }).catch(() => {});
-    },
-  }).catch((e) => console.warn('[Auth] gate error:', e.message));
+  // Ancien système de synchronisation : un appareil déjà déverrouillé rejoint
+  // l'espace partagé sans ressaisir le mot de passe ; ses vieilles clés sont purgées.
+  await migrateLegacyUnlock();
 
-  // ===== REMISE À ZÉRO UNIQUE (incident doublons du 08/07/2026) =====
-  // Certains appareils avaient accumulé le seed EN PLUS du cloud (doublons).
-  // Cette migration, exécutée UNE SEULE FOIS par appareil, vide le local et
-  // force une réadoption propre du cloud. Après ça, plus aucun doublon ne
-  // peut être re-poussé.
-  const RESET_FLAG = 'hard_reset_dupfix_20260708';
-  if (!(await getMeta(RESET_FLAG))) {
-    try {
-      const localForReset = await getAllProfiles();
-      const remoteN = await cloudProfileCount();
-      // On ne réinitialise que si le cloud est joignable ET non-vide, pour ne
-      // pas effacer un appareil hors-ligne qui aurait les seules données.
-      if (remoteN && remoteN > 0) {
-        const bootMark = document.querySelector('.boot__mark');
-        if (bootMark) bootMark.innerHTML = '<span style="font-size:10px; letter-spacing:.04em">MAJ…</span>';
-        const { clearAllProfilesAndImages } = await import('./store.js');
-        await clearAllProfilesAndImages();
-        await setMeta('seeded', true);        // ne jamais re-semer
-        await setMeta(RESET_FLAG, true);
-        await setMeta('cloud_last_hash', null); // forcer un vrai pull
-        await setMeta('cloud_chunk_state', null);
-        console.log(`[Reset] Doublons purgés (local avait ${localForReset.length}, cloud=${remoteN}). Réadoption propre.`);
-      } else {
-        // Cloud injoignable : on repousse la migration au prochain boot.
-        console.log('[Reset] Cloud injoignable, migration reportée.');
-      }
-    } catch (e) {
-      console.warn('[Reset] migration échouée (reportée):', e.message);
-    }
-  }
+  // Nettoyage des images orphelines (profileId qui n'existe plus) AVANT que la
+  // synchronisation ne démarre, pour ne jamais envoyer une photo fantôme.
+  await cleanupOrphanImages().catch(() => {});
 
-  // PRIORITÉ #1 : si DB vide, tenter d'abord le cloud AVANT de seed
-  // (sinon en navigation privée / nouveau device, on flash le seed obsolète
-  // pendant 5-10s, ce qui masque les vraies données).
-  let profiles = await getAllProfiles();
-  if (!profiles.length) {
-    // Boot veil: indiquer "Chargement…" pendant l'attente du cloud
-    const bootMark = document.querySelector('.boot__mark');
-    if (bootMark) {
-      bootMark.innerHTML = '<span style="font-size:11px; letter-spacing:.05em">CLOUD…</span>';
-    }
-    let cloudOk = false;
-    // ÉTAPE 1 : vérification RAPIDE (manifest seul) — le cloud a-t-il des données ?
-    // On décide de semer ou non SANS attendre les 15 Mo d'images (sinon le seed
-    // se chargeait sur timeout, puis le cloud fusionnait → doublons).
-    let remoteCount = null;
-    try { remoteCount = await cloudProfileCount(); } catch {}
-
-    if (remoteCount && remoteCount > 0) {
-      // Le cloud a des profils → on télécharge tout (images incluses), SANS
-      // timeout qui déclencherait le seed. On attend la fin réelle du pull.
-      try {
-        const r = await setupCloudAutoPull();
-        if (r?.autoPulled) {
-          profiles = await getAllProfiles();
-          cloudOk = profiles.length > 0;
-          console.log(`[Boot] Cloud chargé : ${r.profiles} profils + ${r.images} images`);
-        }
-      } catch (e) {
-        console.warn('[Boot] Cloud pull au démarrage échoué:', e.message);
-      }
-      // Filet : même si le pull a partiellement échoué, on NE sème PAS quand le
-      // cloud est connu non-vide (éviter les doublons seed+cloud à tout prix).
-      if (!cloudOk) {
-        await setMeta('seeded', true); // empêcher tout seed ultérieur
-        console.warn('[Boot] Cloud non-vide mais pull incomplet — seed bloqué pour éviter les doublons.');
-      }
-    }
-    // ÉTAPE 2 : cloud vide OU injoignable → seed de démarrage (une seule fois)
-    if (!cloudOk && !profiles.length && remoteCount === 0 && !(await getMeta('seeded'))) {
-      const past = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const seeded = SEED_PROFILES.map(p => ({
-        id: uid(),
-        name: p.name,
-        professions: p.professions || (p.profession ? [p.profession] : []),
-        instagram: p.instagram,
-        phone: '',
-        email: '',
-        website: '',
-        location: '',
-        rate: '',
-        lastContact: '',
-        bio: '',
-        tags: [],
-        notes: '',
-        status: 'a_contacter',
-        createdAt: past,
-        updatedAt: past,
-      }));
-      await bulkSaveProfiles(seeded);
-      await setMeta('seeded', true);
-      profiles = await getAllProfiles();
-    }
-  }
-  // Migration: profession (string) → professions (array)
-  // On migre si professions est absent OU vide ET qu'on a profession à récupérer
-  // (sinon edge case : professions=[] + profession="X" → on perdait "X")
-  const needsMigration = profiles.some(p => p.profession && (!p.professions || p.professions.length === 0));
-  if (needsMigration) {
-    for (const p of profiles) {
-      if (p.profession && (!p.professions || p.professions.length === 0)) {
-        p.professions = [p.profession];
-        delete p.profession;
-        await saveProfile(p);
-      } else if (p.profession !== undefined) {
-        // Cas mixte : profession + professions tous deux présents → garder professions, nettoyer
-        delete p.profession;
-        await saveProfile(p);
-      }
-    }
-  }
-  STATE.profiles = profiles;
-
-  // Application de l'enrichissement (data/enrichment.json) si nouvelle version
-  try {
-    const enrichResult = await applyEnrichmentIfNew();
-    if (enrichResult.applied && enrichResult.updated > 0) {
-      // Recharger les profils
-      STATE.profiles = await getAllProfiles();
-      console.log(`Enrichment v${enrichResult.version} appliqué : ${enrichResult.updated} profils enrichis.`);
-      setTimeout(() => {
-        toast(`✨ ${enrichResult.updated} profils enrichis automatiquement (sites, e-mails, bios trouvés en ligne).`, {
-          type: 'ok', timeout: 6000,
-        });
-      }, 1000);
-    }
-  } catch (e) {
-    console.warn('Enrichment skipped:', e.message);
-  }
-
-  // Nettoyage one-shot des images orphelines (profileId qui n'existe plus
-  // dans la table profiles) — répare les corruptions de chunks anciennes.
-  cleanupOrphanImages().catch(() => {});
+  STATE.profiles = await getAllProfiles();
 
   // Précharge les premières images de chaque profil pour les vignettes,
   // en parallèle par batches de 25 (évite la latence séquentielle IDB
@@ -242,85 +99,15 @@ const STATE = {
   // remove boot veil (setTimeout fallback for unreliable rAF environments)
   setTimeout(() => document.body.classList.add('is-ready'), 50);
 
-  // Sync init (en arrière-plan, ne bloque pas l'UI)
-  setupCloudListeners();
-
-  // Clé auto-réparante : si le coffre a été rescellé (nouvelle clé d'écriture),
-  // le mot de passe retenu re-dérive le token silencieusement. Si le mot de
-  // passe a changé, l'appareil se verrouille et la porte se re-présente.
-  ensureFreshToken().then((r) => {
-    if (r?.locked) {
-      ensureAuthGate({
-        message: 'La clé d\'accès a été renouvelée — ressaisis le mot de passe.',
-        onUnlocked: () => {
-          updateSyncPill();
-          updateSaveButton();
-          syncCloud({ reason: 'unlock-refresh' }).catch(() => {});
-        },
-      }).catch(() => {});
-    } else if (r?.changed) {
-      console.log('[Auth] Clé d\'écriture renouvelée depuis le coffre.');
-      updateSyncPill();
-      updateSaveButton();
-    }
-  }).catch(() => {});
-
-  // Cloud public : auto-pull au démarrage si manifest existe en ligne
-  // (PRIORITÉ #1 — pas de configuration nécessaire sur les nouveaux appareils)
-  doCloudPullAndRefresh({ silent: false, source: 'boot' }).catch((e) => console.warn('[Boot] Cloud auto-pull skipped:', e.message));
-
-  // Helper : ne JAMAIS pull/recharger l'état si UNE modale est ouverte (le pull
-  // réécrit STATE.profiles + re-render → modifs en cours perdues, callbacks
-  // coupés). On bloque pour TOUT dialog ouvert (édition, fiche, IA, réglages…).
-  function canPullSafely() {
-    // On NE bloque QUE sur une modale ouverte (édition en cours → re-render
-    // couperait les callbacks). On ne bloque PLUS sur dirtyState : le pull est
-    // un MERGE non destructif (le plus récent gagne ; nos modifs locales sont
-    // persistées dans IndexedDB et réécrites à l'identique), donc rafraîchir
-    // même avec des modifs locales en attente est SÛR — et c'est indispensable :
-    // sinon un appareil aux modifs non-pushées ne voyait JAMAIS les changements
-    // des autres (« ne s'actualise pas du tout »).
-    if (document.querySelector('dialog[open]')) return false;
-    return true;
-  }
-
-  // Polling toutes les 30s : si quelqu'un push depuis un autre appareil, on
-  // récupère (1 GET manifest léger par tick ; le téléchargement complet ne
-  // part que si le hash distant a changé).
-  setInterval(() => {
-    if (document.hidden) return; // ne pas poll si tab inactive
-    if (!canPullSafely()) return;
-    doCloudPullAndRefresh({ silent: false, source: 'poll' }).catch(() => {});
-  }, 30_000);
-
-  // File de scan photos IG : reprise auto au boot (+12 s pour laisser le cloud
-  // se poser) puis toutes les 10 min — couvre le retour de quota Microlink.
+  // File de scan photos IG : reprise auto au boot puis toutes les 10 min
+  // (couvre le retour de quota des services de récupération).
   setTimeout(() => processIgQueue().catch(() => {}), 12_000);
   setInterval(() => processIgQueue().catch(() => {}), 10 * 60_000);
 
-  // Pull forcé quand la tab redevient visible (mobile : très important — l'app
-  // peut rester en arrière-plan plusieurs minutes sans polling).
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) return;
-    if (!canPullSafely()) return;
-    // Throttle : pas plus d'un pull toutes les 5 secondes
-    const now = Date.now();
-    if (window.__lastVisibilityPull && now - window.__lastVisibilityPull < 5000) return;
-    window.__lastVisibilityPull = now;
-    doCloudPullAndRefresh({ silent: true, source: 'visibility' }).catch(() => {});
-  });
+  // Synchronisation temps réel (porte mot de passe si l'appareil est nouveau).
+  updateSyncUi();
+  startSync();
 
-  // Pull au focus de la fenêtre (desktop : alt-tab, etc.)
-  window.addEventListener('focus', () => {
-    if (!canPullSafely()) return;
-    const now = Date.now();
-    if (window.__lastFocusPull && now - window.__lastFocusPull < 5000) return;
-    window.__lastFocusPull = now;
-    doCloudPullAndRefresh({ silent: true, source: 'focus' }).catch(() => {});
-  });
-
-  updateSyncPill();
-  updateSaveButton();
   // PWA — enregistre le SW et reload auto quand une nouvelle version active
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -338,89 +125,110 @@ const STATE = {
   // (L'ancien banner d'onboarding QR est remplacé par la porte mot de passe.)
 })();
 
-// ============= CLOUD PULL HELPER =============
+// ============= SYNCHRONISATION TEMPS RÉEL =============
 
-let __cloudPullInFlight = false;
+let RT = null;            // module realtime.js (chargé dynamiquement : l'app
+                          // reste utilisable hors-ligne même si le SDK ne charge pas)
+let syncNote = '';        // raison pour laquelle la sync n'est pas active
 
-/**
- * Tente un pull cloud + recharge l'état local + redessine si quelque chose a changé.
- * @param {Object} opts
- * @param {boolean} opts.silent - true = pas de toast (sauf changement détecté).
- * @param {boolean} opts.force - true = force le pull même si déjà fait récemment.
- * @param {string} opts.source - 'boot' | 'poll' | 'visibility' | 'focus' | 'manual'.
- */
-async function doCloudPullAndRefresh({ silent = false, force = false, source = 'manual' } = {}) {
-  if (__cloudPullInFlight && !force) return { skipped: true, reason: 'in-flight' };
-  __cloudPullInFlight = true;
-  try {
-    const r = await setupCloudAutoPull();
-    // CONVERGENCE : si le merge a détecté du contenu local plus récent ou
-    // absent du cloud (profil ajouté ici, modif locale plus fraîche), on
-    // re-pousse automatiquement pour que les AUTRES appareils le voient.
-    if (r && ((r.localNewer || 0) > 0 || (r.localOnly || 0) > 0)) {
-      const cfg = await getCloudConfig();
-      if (cfg.token) {
-        console.log(`[Sync] Push-back requis (localNewer=${r.localNewer}, localOnly=${r.localOnly})`);
-        scheduleCloudPush(1500);
-      }
-    }
-    if (r?.autoPulled && r.profiles > 0) {
-      STATE.profiles = await getAllProfiles();
-      STATE.imagesByProfile.clear();
-      for (const p of STATE.profiles) {
-        const imgs = await getProfileImages(p.id);
-        if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
-      }
-      buildFilterChips();
-      buildProfessionDatalist();
-      render();
-      window.__updateIgBulkCount?.();
-      updateSyncPill();
-      updateSaveButton();
-      window.__lastCloudPullAt = Date.now();
-      updateRefreshIndicator();
-      const prefix = source === 'boot' ? '✓ Cloud' : '↻ Cloud mis à jour';
-      // Si on a hit le quota IDB (Safari Privée), prévenir l'user que c'est session-only
-      if (window.__idbQuotaHit) {
-        toast(`${prefix} : ${r.profiles} profils + ${r.images} images (mode navigation privée — photos visibles cette session uniquement).`, { type: 'info', timeout: 7000 });
-      } else {
-        toast(`${prefix} : ${r.profiles} profils + ${r.images} images.`, { type: 'ok', timeout: 4000 });
-      }
-      return r;
-    }
-    // Pas de changement détecté : juste mettre à jour le timestamp
-    window.__lastCloudPullAt = Date.now();
-    updateRefreshIndicator();
-    if (!silent && source === 'manual') {
-      toast('Cloud à jour — rien à rafraîchir.', { type: 'info', timeout: 2500 });
-    }
-    return r || { skipped: true };
-  } finally {
-    __cloudPullInFlight = false;
+async function startSync() {
+  let spaceId = await getSpaceId();
+  if (!spaceId) {
+    const r = await ensureAuthGate({
+      onUnlocked: () => toast('✓ Accès déverrouillé — connexion à l\'espace partagé…', { type: 'ok', timeout: 3500 }),
+    }).catch(() => null);
+    spaceId = r?.spaceId || await getSpaceId();
+    if (!spaceId) return;
   }
-}
-
-// Met à jour l'indicateur "vu il y a Xs" sur le bouton refresh
-function updateRefreshIndicator() {
-  const btn = document.getElementById('refresh-btn');
-  if (!btn) return;
-  const last = window.__lastCloudPullAt;
-  if (!last) {
-    btn.title = 'Rafraîchir depuis le cloud';
-    btn.removeAttribute('data-fresh-ago');
+  try {
+    RT = await import('./realtime.js');
+  } catch (e) {
+    console.warn('[Sync] module temps réel indisponible :', e.message);
+    syncNote = 'Hors ligne au premier chargement — la synchronisation démarrera au prochain lancement connecté.';
+    updateSyncUi();
     return;
   }
-  const sec = Math.round((Date.now() - last) / 1000);
-  let label;
-  if (sec < 5) label = 'à l\'instant';
-  else if (sec < 60) label = `il y a ${sec}s`;
-  else if (sec < 3600) label = `il y a ${Math.round(sec / 60)} min`;
-  else label = `il y a ${Math.round(sec / 3600)} h`;
-  btn.title = `Rafraîchir depuis le cloud (vu ${label})`;
-  btn.dataset.freshAgo = label;
+  const cfg = await RT.loadRealtimeConfig();
+  if (!RT.isConfigured(cfg)) {
+    syncNote = 'Espace temps réel non configuré sur ce site (js/firebase-config.js).';
+    updateSyncUi();
+    return;
+  }
+  RT.onRealtimeStatus(updateSyncUi);
+  try {
+    await RT.startRealtime({ spaceId, onChange: ({ ids }) => refreshFromLocal(ids) });
+  } catch (e) {
+    console.warn('[Sync] démarrage échoué :', e.message);
+    syncNote = 'Démarrage de la synchronisation échoué : ' + e.message;
+    updateSyncUi();
+  }
 }
-// Rafraîchir l'indicateur toutes les 30s
-setInterval(updateRefreshIndicator, 30_000);
+
+let __detailRefreshPending = null;
+/**
+ * Recharge l'état depuis le miroir local (après des changements venus d'un
+ * autre appareil) et redessine. `ids` = profils touchés (tous si absent).
+ */
+async function refreshFromLocal(ids) {
+  STATE.profiles = await getAllProfiles();
+  const known = new Set(STATE.profiles.map(p => p.id));
+  const wanted = ids && ids.size ? [...ids] : [...known];
+  for (const id of wanted) {
+    if (!known.has(id)) { STATE.imagesByProfile.delete(id); continue; }
+    const imgs = await getProfileImages(id);
+    if (imgs.length) STATE.imagesByProfile.set(id, imgs); else STATE.imagesByProfile.delete(id);
+  }
+  for (const id of [...STATE.imagesByProfile.keys()]) if (!known.has(id)) STATE.imagesByProfile.delete(id);
+
+  if (STATE.current) {
+    const fresh = STATE.profiles.find(p => p.id === STATE.current.id);
+    const dlg = $('#profile-dialog');
+    if (!fresh) {
+      if (dlg?.open) { dlg.close(); toast('Ce profil vient d\'être supprimé depuis un autre appareil.', { type: 'info', timeout: 4000 }); }
+      STATE.current = null;
+    } else {
+      Object.assign(STATE.current, fresh);
+      if (dlg?.open && (!ids || ids.has(fresh.id))) scheduleDetailRefresh(fresh.id);
+    }
+  }
+  buildFilterChips();
+  buildProfessionDatalist();
+  render();
+  window.__updateIgBulkCount?.();
+}
+
+/** Redessine la fiche ouverte, mais jamais pendant que l'on y tape (notes…). */
+function scheduleDetailRefresh(id) {
+  const dlg = $('#profile-dialog');
+  const typing = dlg?.open && isTypingContext() && dlg.contains(document.activeElement);
+  if (!typing) { if (STATE.current?.id === id) openProfileDialog(id); return; }
+  if (__detailRefreshPending) return;
+  __detailRefreshPending = id;
+  document.activeElement.addEventListener('blur', () => {
+    const pid = __detailRefreshPending; __detailRefreshPending = null;
+    if (pid && STATE.current?.id === pid && $('#profile-dialog').open) openProfileDialog(pid);
+  }, { once: true });
+}
+
+/** Met à jour STATE après une écriture locale (patchProfile renvoie le profil frais). */
+function applySaved(saved) {
+  if (!saved) return;
+  const i = STATE.profiles.findIndex(p => p.id === saved.id);
+  if (i >= 0) Object.assign(STATE.profiles[i], saved); else STATE.profiles.push(saved);
+  if (STATE.current && STATE.current.id === saved.id && STATE.current !== STATE.profiles[i]) Object.assign(STATE.current, saved);
+}
+
+/** Bouton « Rafraîchir » / scan IG : relecture complète depuis le serveur. */
+async function resyncAndRefresh({ quiet = false } = {}) {
+  if (!RT) { if (!quiet) toast('Synchronisation non active sur cet appareil.', { type: 'warn' }); return null; }
+  const r = await RT.resyncRealtime().catch((e) => ({ ok: false, error: e.message }));
+  await refreshFromLocal();
+  if (!quiet) {
+    if (r?.ok) toast(`↻ À jour : ${r.remoteCount} profils sur l'espace partagé.`, { type: 'ok', timeout: 3000 });
+    else toast('Relecture impossible : ' + (r?.error || 'hors ligne'), { type: 'warn', timeout: 4000 });
+  }
+  return r;
+}
 
 // ============= BUILD UI ELEMENTS =============
 
@@ -765,70 +573,16 @@ function hookUI() {
     }
   });
 
-  // bouton "Sauvegarder" — cycle complet pull→merge→push
-  $('#save-btn').addEventListener('click', async () => {
-    const cloudCfg = await getCloudConfig();
+  // bouton « Synchronisé » — tout est automatique ; un clic force l'envoi
+  // de ce qui attend et relit l'espace partagé.
+  $('#save-btn').addEventListener('click', onSaveButtonClick);
 
-    // Cas 1 : appareil déverrouillé → sync complète (intègre les modifs des
-    // autres appareils PUIS pousse les nôtres — zéro écrasement croisé)
-    if (cloudCfg.token) {
-      try {
-        const r = await syncCloud({ reason: 'save-button' });
-        if (r.pushed && r.push) {
-          toast(`✓ Synchronisé : ${r.push.profiles} profils + ${r.push.images} images (${r.push.chunksPushed ?? r.push.chunks} fichier(s) envoyés). Visible sur tous les appareils.`, { type: 'ok', timeout: 5000 });
-        } else if (r.skipped) {
-          toast('Synchronisation déjà en cours…', { type: 'info', timeout: 2500 });
-        } else {
-          toast('✓ Tout est déjà synchronisé.', { type: 'ok', timeout: 3000 });
-        }
-        // Recharger l'affichage (le pull a pu ramener des modifs distantes :
-        // profils renommés ET nouvelles photos → on recharge les deux).
-        STATE.profiles = await getAllProfiles();
-        STATE.imagesByProfile.clear();
-        for (const p of STATE.profiles) {
-          const imgs = await getProfileImages(p.id);
-          if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
-        }
-        buildFilterChips();
-        render();
-      } catch (e) {
-        if (e.code === 'QUOTA' || /Quota GitHub/.test(e.message)) {
-          const wait = e.waitSec || 60;
-          const min = Math.max(1, Math.round(wait / 60));
-          toast(`⏳ Sauvegarde différée — quota GitHub atteint, réessai auto dans ${min}min.`, {
-            type: 'info', timeout: 6000,
-          });
-          scheduleCloudPush(wait * 1000 + 2000);
-        } else if (e.code === 'AUTH') {
-          handleAuthFailure();
-        } else {
-          toast('Sync échouée : ' + e.message, { type: 'err', timeout: 6000 });
-        }
-      }
-      return;
-    }
-
-    // Cas 2 : appareil verrouillé → re-proposer le mot de passe
-    ensureAuthGate({
-      onUnlocked: () => {
-        updateSyncPill();
-        updateSaveButton();
-        syncCloud({ reason: 'unlock-from-save' }).catch(() => {});
-      },
-    }).catch(() => {});
-  });
-
-  // bouton "↻ Rafraîchir" — pull manuel depuis le cloud
+  // bouton « ↻ Rafraîchir » — relecture complète depuis l'espace partagé
   $('#refresh-btn')?.addEventListener('click', async () => {
     const btn = $('#refresh-btn');
     btn.classList.add('is-spinning');
-    try {
-      await doCloudPullAndRefresh({ silent: false, force: true, source: 'manual' });
-    } catch (e) {
-      toast('Pull cloud échoué : ' + e.message, { type: 'err', timeout: 5000 });
-    } finally {
-      btn.classList.remove('is-spinning');
-    }
+    try { await resyncAndRefresh(); }
+    finally { btn.classList.remove('is-spinning'); }
   });
 
   // bouton "Scanner photos IG" — cloud d'abord (robot back-office), puis scan
@@ -1053,20 +807,14 @@ async function openProfileDialog(id) {
     onPrev: () => navigateProfile(-1),
     onNext: () => navigateProfile(+1),
     onStatusChange: async (st) => {
-      profile.status = st;
-      await saveProfile(profile);
-      maybeSchedulePush();
+      applySaved(await patchProfile(profile.id, { status: st }));
       render();
     },
     onNotesChange: async (notes) => {
-      profile.notes = notes;
-      await saveProfile(profile);
-      maybeSchedulePush();
+      applySaved(await patchProfile(profile.id, { notes }));
     },
     onProjectsChange: async (projects) => {
-      profile.projects = projects;
-      await saveProfile(profile);
-      maybeSchedulePush();
+      applySaved(await patchProfile(profile.id, { projects }));
     },
     onUploadImages: async (files) => {
       await addImagesToProfile(profile, files);
@@ -1084,9 +832,6 @@ async function openProfileDialog(id) {
     onDeleteImage: async (key) => {
       await deleteImage(key);
       revokeObjectURL(key);
-      profile.updatedAt = new Date().toISOString();
-      await saveProfile(profile);
-      maybeSchedulePush();
       const imgs = await getProfileImages(profile.id);
       STATE.imagesByProfile.set(profile.id, imgs);
       openProfileDialog(profile.id);
@@ -1134,7 +879,6 @@ async function duplicateProfile(p) {
     updatedAt: undefined,
   };
   await saveProfile(dup);
-  maybeSchedulePush();
   STATE.profiles.push(dup);
   buildFilterChips();
   render();
@@ -1162,19 +906,21 @@ async function confirmDelete(profile) {
   }
   buildFilterChips();
   render();
-  maybeSchedulePush();
   toast('Profil supprimé.', { type: 'ok' });
 }
 
 // ============= EDIT FORM =============
 
 let pendingFiles = []; // images en attente avant save
+let editBase = null;   // copie du profil à l'ouverture : seuls les champs que
+                       // l'utilisateur change sont enregistrés (fusion fine)
 
 function openEditDialog(profile = null) {
   const dlg = $('#edit-dialog');
   const form = $('#edit-form');
   form.reset();
   pendingFiles = [];
+  editBase = profile ? JSON.parse(JSON.stringify(profile)) : null;
   $('#dropzone-list').replaceChildren();
   $('#dropzone-list').hidden = true;
   $('#edit-delete').hidden = !profile;
@@ -1257,30 +1003,37 @@ function hookEditForm() {
     const id = data.id || uid();
     const existing = STATE.profiles.find(p => p.id === id);
     const oldHandle = existing?.instagram || '';
-    const profile = {
-      ...(existing || {}),
-      id,
+    const values = {
       name: data.name.trim(),
       professions,
       status: data.status || '',
       instagram: parseInstagramHandle(data.instagram),
-      phone: data.phone.trim(),
-      email: data.email.trim(),
-      website: data.website.trim(),
-      location: data.location.trim(),
+      phone: (data.phone || '').trim(),
+      email: (data.email || '').trim(),
+      website: (data.website || '').trim(),
+      location: (data.location || '').trim(),
       rate: (data.rate || '').trim(),
       agency: (data.agency || '').trim(),
       lastContact: data.lastContact || '',
       tags: (data.tags || '').split(',').map(t => t.trim()).filter(Boolean),
       projects: data.projects || '',
-      notes: data.notes,
+      notes: data.notes || '',
     };
-    delete profile.profession; // nettoyer ancien champ
-    await saveProfile(profile);
-
+    let profile;
     if (existing) {
-      Object.assign(existing, profile);
+      // N'enregistrer QUE ce que l'utilisateur a changé depuis l'ouverture du
+      // formulaire : une modification faite entre-temps sur un autre appareil
+      // (autre champ) n'est pas écrasée.
+      const base = editBase && editBase.id === id ? editBase : existing;
+      const patch = {};
+      for (const [k, v] of Object.entries(values)) if (!sameValue(v, base[k])) patch[k] = v;
+      if (existing.profession !== undefined) patch.profession = ''; // ancien champ
+      profile = Object.keys(patch).length ? (await patchProfile(id, patch)) || existing : existing;
+      applySaved(profile);
+      profile = STATE.profiles.find(p => p.id === id) || profile;
     } else {
+      profile = { id, ...values };
+      await saveProfile(profile);
       STATE.profiles.push(profile);
     }
 
@@ -1295,7 +1048,7 @@ function hookEditForm() {
     buildProfessionDatalist();
     render();
     $('#edit-dialog').close();
-    maybeSchedulePush();
+    if ($('#profile-dialog').open && STATE.current?.id === profile.id) openProfileDialog(profile.id);
     toast(existing ? 'Profil mis à jour.' : 'Profil créé.', { type: 'ok' });
 
     // SCAN PHOTOS AUTO : nouveau profil avec IG → en file immédiatement.
@@ -1347,12 +1100,9 @@ async function importInstagramProfilePicOnly(profile, { silent = false } = {}) {
     }
     await deleteProfileImages(profile.id);
     await saveImage(profile.id, 0, blob);
-    if (result.bio && !profile.bio) profile.bio = result.bio;
-    profile.updatedAt = new Date().toISOString();
-    await saveProfile(profile);
+    if (result.bio && !profile.bio) applySaved(await patchProfile(profile.id, { bio: result.bio }));
     const imgs = await getProfileImages(profile.id);
     STATE.imagesByProfile.set(profile.id, imgs);
-    maybeSchedulePush();
     return { added: 1, errors: [] };
   } catch (e) {
     return { added: 0, errors: [e.message] };
@@ -1407,7 +1157,6 @@ async function bulkImportProfilePicsOnly({ skipConfirm = false } = {}) {
   window.__updateIgBulkCount?.();
   render();
   toast(`Mode rapide terminé : ${success}/${targets.length} photos de profil ajoutées.`, { type: 'ok', timeout: 8000 });
-  maybeSchedulePush();
   return { success, totalTargets: targets.length };
 }
 
@@ -1423,9 +1172,8 @@ async function onIgBulkClick() {
   const countMissing = () =>
     STATE.profiles.filter(p => p.instagram && !STATE.imagesByProfile.get(p.id)?.length).length;
   const before = countMissing();
-  const t = toast('Vérification des photos sur le cloud…', { type: 'info', timeout: 0 });
-  try { await doCloudPullAndRefresh({ silent: true, force: true, source: 'manual' }); }
-  catch (e) { console.warn('[IG bulk] pull cloud échoué:', e.message); }
+  const t = toast('Vérification des photos sur l\'espace partagé…', { type: 'info', timeout: 0 });
+  await resyncAndRefresh({ quiet: true });
   t.dismiss();
   const after = countMissing();
   const gained = before - after;
@@ -1498,23 +1246,18 @@ async function importInstagramForProfile(profile, { silent = false } = {}) {
       result.errors.push('aucune image téléchargée');
     }
 
-    // Mise à jour bio si vide
-    if (result.bio && !profile.bio) profile.bio = result.bio;
-
     progressToast?.dismiss();
     const imgs = await getProfileImages(profile.id);
     STATE.imagesByProfile.set(profile.id, imgs);
 
     if (added) {
-      profile.updatedAt = new Date().toISOString();
-      await saveProfile(profile);
+      if (result.bio && !profile.bio) applySaved(await patchProfile(profile.id, { bio: result.bio }));
       if (!silent) {
         if ($('#profile-dialog').open && STATE.current?.id === profile.id) openProfileDialog(profile.id);
         render();
         const errMsg = result.errors.length ? ` (${result.errors.length} avertissement${result.errors.length > 1 ? 's' : ''})` : '';
         toast(`@${profile.instagram} : ${added} image${added > 1 ? 's' : ''} importée${added > 1 ? 's' : ''}${errMsg}.`, { type: 'ok', timeout: 5000 });
       }
-      maybeSchedulePush();
     } else if (!silent) {
       toast(`@${profile.instagram} : aucune image récupérée — les sources publiques Instagram sont quasi toutes fermées depuis fin 2026. Le robot (qui tourne sur le Mac du bureau) la récupérera, ou glisse une photo directement sur la fiche.`, { type: 'warn', timeout: 9000 });
     }
@@ -1603,7 +1346,6 @@ async function bulkImportInstagramPhotos({ skipConfirm = false } = {}) {
   } else {
     toast(`Bulk IG terminé : ${success}/${targets.length} profils enrichis, ${totalImages} images au total.`, { type: 'ok', timeout: 8000 });
   }
-  maybeSchedulePush();
   return { success, totalImages, totalTargets: targets.length, rateLimitHit };
 }
 
@@ -1726,15 +1468,6 @@ async function addImagesToProfile(profile, files) {
       }
     }
   }
-  // CRUCIAL : une image ajoutée doit se synchroniser. On bump l'updatedAt du
-  // profil (saveProfile) → le merge le voit "localNewer" → push-back qui pousse
-  // les chunks d'images. Sans ça, les photos restaient locales (le merge ne
-  // regarde que les profils, jamais les images) et « Sauvegarder » disait déjà
-  // synchronisé. Couvre les 3 chemins d'ajout (bouton, drag&drop, collage).
-  if (saved > 0) {
-    await saveProfile(profile);
-    maybeSchedulePush();
-  }
   if (quotaHit) {
     toast(`Stockage local plein. ${saved}/${files.length} images sauvegardées. Supprimez d'anciennes images puis réessayez.`, {
       type: 'err', timeout: 7000,
@@ -1769,7 +1502,7 @@ function hookBulkDialog() {
       newProfiles.push({
         id: uid(),
         name: guessNameFromHandle(handle),
-        profession,
+        professions: profession ? [profession] : [],
         instagram: handle,
         phone: '', email: '', website: '', location: '',
         tags: [], notes: '',
@@ -1780,7 +1513,6 @@ function hookBulkDialog() {
     if (newProfiles.length) {
       await bulkSaveProfiles(newProfiles);
       STATE.profiles.push(...newProfiles);
-      maybeSchedulePush(); // les nouveaux profils partent au cloud (debounce 2,5 s)
       for (const np of newProfiles) if (np.instagram) enqueueIgScan(np.id);
     }
     $('#bulk-dialog').close();
@@ -2009,17 +1741,8 @@ function triggerImport() {
         okLabel: 'Remplacer',
       });
       await importAll(data, { replace });
-      // recharge
-      STATE.profiles = await getAllProfiles();
-      STATE.imagesByProfile.clear();
-      for (const p of STATE.profiles) {
-        const imgs = await getProfileImages(p.id);
-        if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
-      }
-      buildFilterChips();
-      render();
-      maybeSchedulePush(); // propager les profils restaurés vers le cloud
-      toast('Import terminé.', { type: 'ok' });
+      await refreshFromLocal();
+      toast('Import terminé — les profils se synchronisent sur tous les appareils.', { type: 'ok', timeout: 4000 });
     } catch (err) {
       console.error(err);
       toast('Import impossible (fichier invalide).', { type: 'err' });
@@ -2029,22 +1752,27 @@ function triggerImport() {
 }
 
 async function doDiagnoseSync() {
-  toast('Diagnostic en cours…', { type: 'info', timeout: 0 });
-  const r = await diagnoseCloud();
-  const localProfiles = STATE.profiles.length;
+  const t = toast('Diagnostic en cours…', { type: 'info', timeout: 0 });
   let localImages = 0;
   for (const imgs of STATE.imagesByProfile.values()) localImages += imgs.length;
-  const lines = [
-    `Écriture déverrouillée : ${r.configured ? 'oui' : 'non (mot de passe requis)'}`,
-    `Lecture cloud : ${r.publicReadOk ? 'OK' : 'ÉCHEC (' + (r.publicReadError || r.publicReadStatus) + ')'}`,
-    `Profils cloud : ${r.remoteProfiles ?? '?'} — local : ${localProfiles}`,
-    `Images cloud : ${r.remoteTotalImages ?? '?'} (${r.remoteImageChunks ?? '?'} fichiers) — local : ${localImages}`,
-    `Dernier export cloud : ${r.remoteExportedAt ? new Date(r.remoteExportedAt).toLocaleString('fr-FR') : '?'}`,
-    `Dernière sync de cet appareil : ${r.lastSync ? new Date(r.lastSync).toLocaleString('fr-FR') : 'jamais'}`,
-  ];
-  document.querySelectorAll('.toast').forEach(t => { if (t.textContent.includes('Diagnostic en cours')) t.remove(); });
-  window.prompt('Diagnostic cloud (Cmd+C pour copier) :', lines.join('\n'));
-  console.log('[Diagnostic Cloud]', r);
+  const lines = [];
+  if (!RT) {
+    lines.push('Synchronisation : inactive sur cet appareil');
+    if (syncNote) lines.push(syncNote);
+    lines.push(`Profils locaux : ${STATE.profiles.length} — images : ${localImages}`);
+  } else {
+    const r = await RT.realtimeDiagnose();
+    const etat = { synced: 'connecté, tout est à jour', saving: 'connecté, envoi en cours', connecting: 'connexion…', offline: 'hors ligne', error: 'erreur', off: 'inactive' }[r.state] || r.state;
+    lines.push(`Synchronisation : ${etat}${r.error ? ' (' + r.error + ')' : ''}`);
+    lines.push(`Espace partagé : ${r.space || '?'} — projet ${r.projectId || '?'}`);
+    lines.push(`Profils sur l'espace : ${r.remoteProfiles} — local : ${r.localProfiles} (images locales : ${localImages})`);
+    lines.push(`Modifications en attente d'envoi : ${r.pending}`);
+    lines.push(r.roundTripMs != null ? `Aller-retour serveur : ${r.roundTripMs} ms` : `Aller-retour serveur : échec (${r.roundTripError || '?'})`);
+    console.log('[Diagnostic sync]', r);
+  }
+  lines.push(`Version de l'app : ${document.getElementById('app-version')?.textContent || '?'}`);
+  t.dismiss();
+  window.prompt('Diagnostic synchronisation (Cmd+C pour copier) :', lines.join('\n'));
 }
 
 async function doBackupLocal() {
@@ -2087,7 +1815,6 @@ async function reapplyEnrichment() {
     buildProfessionDatalist();
     render();
     toast(`✨ ${result.updated} profils enrichis (v${result.version}).`, { type: 'ok', timeout: 5000 });
-    maybeSchedulePush();
   } else {
     toast('Aucune nouvelle info à appliquer.', { type: 'info', timeout: 3000 });
   }
@@ -2108,7 +1835,7 @@ async function doReSeed() {
     .map(s => ({
       id: uid(),
       name: s.name,
-      profession: s.profession,
+      professions: s.professions || (s.profession ? [s.profession] : []),
       instagram: s.instagram,
       phone: '', email: '', website: '', location: '',
       tags: [], notes: '', status: 'a_contacter',
@@ -2116,7 +1843,6 @@ async function doReSeed() {
     }));
   if (newOnes.length) {
     await bulkSaveProfiles(newOnes);
-    maybeSchedulePush();
     STATE.profiles.push(...newOnes);
     buildFilterChips();
     render();
@@ -2127,28 +1853,22 @@ async function doReSeed() {
 async function doReset() {
   const ok = await confirmDialog({
     title: 'Réinitialiser cet appareil ?',
-    text: 'Efface les données stockées sur CET appareil puis les recharge depuis le cloud. Les données partagées du cloud ne sont pas supprimées (utilisez la suppression profil par profil pour ça).',
+    text: 'Efface les données stockées sur CET appareil puis les recharge depuis l\'espace partagé. Les données partagées ne sont pas supprimées (utilisez la suppression profil par profil pour ça).',
     okLabel: 'Réinitialiser',
   });
   if (!ok) return;
-  // Réinitialisation LOCALE only. On efface tout d'un bloc (pas la boucle
-  // deleteProfile qui créait N tombstones → push d'un manifest vide bloqué en
-  // boucle EMPTY_BLOCKED toutes les 60 s). Pas de tombstones, pas de dirty →
-  // aucun push destructif ; le cloud partagé reste intact et on le recharge.
-  const { clearAllProfilesAndImages } = await import('./store.js');
+  // Réinitialisation LOCALE uniquement : on vide le journal d'envoi AVANT de
+  // vider les données, pour qu'aucune suppression ne parte vers le serveur.
+  await setMeta('rt_pending', {});
+  await setMeta(IG_QUEUE_KEY, []);
   await clearAllProfilesAndImages();
-  await setMeta('tombstones', []);
-  await setMeta('cloud_local_dirty', false);
-  await setMeta('cloud_last_hash', '');       // force un vrai re-pull propre
-  await setMeta('cloud_chunk_state', {});
-  await setMeta('seeded', true);              // ne pas re-semer par-dessus le cloud
-  markClean();
   STATE.profiles = [];
   STATE.imagesByProfile.clear();
   buildFilterChips();
   render();
-  toast('Appareil réinitialisé — rechargement depuis le cloud…', { type: 'info', timeout: 3000 });
-  await doCloudPullAndRefresh({ silent: true, force: true, source: 'manual' }).catch(() => {});
+  toast('Appareil réinitialisé — rechargement depuis l\'espace partagé…', { type: 'info', timeout: 3000 });
+  if (RT) await resyncAndRefresh({ quiet: true });
+  else location.reload();
   render();
   window.__updateIgBulkCount?.();
 }
@@ -2177,12 +1897,12 @@ function onKeydown(e) {
   if (profileOpen && e.key.toLowerCase() === 'f' && !isTypingContext()) {
     e.preventDefault();
     if (STATE.current) {
-      STATE.current.status = STATE.current.status === 'favori' ? '' : 'favori';
-      saveProfile(STATE.current).then(() => {
-        maybeSchedulePush();
+      const next = STATE.current.status === 'favori' ? '' : 'favori';
+      patchProfile(STATE.current.id, { status: next }).then((saved) => {
+        applySaved(saved);
         openProfileDialog(STATE.current.id);
         render();
-        toast(STATE.current.status === 'favori' ? '⭐ Ajouté aux favoris' : 'Retiré des favoris', { type: 'ok' });
+        toast(next === 'favori' ? '⭐ Ajouté aux favoris' : 'Retiré des favoris', { type: 'ok' });
       });
     }
     return;
@@ -2236,166 +1956,70 @@ function openDialog(id) {
   if (dlg && !dlg.open) dlg.showModal();
 }
 
-// ============= SYNC =============
+// ============= SYNC : INDICATEURS =============
 
-async function updateSyncPill(s) {
+const SYNC_LABELS = {
+  off:        { pill: null,         pillCls: 'off',     btn: 'is-unconfigured', label: 'Déverrouiller', title: 'Entre le mot de passe pour rejoindre l\'espace partagé.' },
+  connecting: { pill: 'Connexion…', pillCls: 'syncing', btn: 'is-syncing',      label: 'Connexion…',    title: 'Connexion à l\'espace partagé…' },
+  offline:    { pill: 'Hors ligne', pillCls: 'err',     btn: 'is-dirty',        label: 'Hors ligne',    title: 'Hors ligne — les modifications partiront automatiquement au retour du réseau.' },
+  saving:     { pill: 'Sync ↑',     pillCls: 'syncing', btn: 'is-syncing',      label: 'Enregistrement…', title: 'Envoi des modifications…' },
+  synced:     { pill: 'Sync',       pillCls: 'ok',      btn: 'is-saved',        label: 'Synchronisé',   title: 'Tout est synchronisé en temps réel sur tous les appareils.' },
+  error:      { pill: 'Sync ✗',     pillCls: 'err',     btn: 'is-error',        label: 'Erreur',        title: 'Erreur de synchronisation' },
+};
+
+/** Reflète l'état de la synchronisation sur la pastille et le bouton de la barre. */
+function updateSyncUi(status) {
+  const s = status || (RT ? RT.getRealtimeStatus() : { state: 'off' });
+  const d = SYNC_LABELS[s.state] || SYNC_LABELS.off;
   const pill = $('#sync-pill');
-  if (!pill) return;
-  const cfg = await getCloudConfig();
-  if (!cfg.token) {
-    pill.classList.add('off');
-    pill.classList.remove('ok', 'syncing', 'err');
-    return;
+  if (pill) {
+    pill.className = 'sync-pill ' + d.pillCls;
+    pill.textContent = d.pill || '';
+    pill.title = d.title;
   }
-  pill.classList.remove('off');
-  pill.classList.remove('ok', 'syncing', 'err');
-  const status = s?.status || 'idle';
-  if (status === 'pushing' || status === 'pulling') {
-    pill.classList.add('syncing');
-    pill.textContent = status === 'pushing' ? 'Sync ↑' : 'Sync ↓';
-  } else if (status === 'error') {
-    pill.classList.add('err');
-    pill.textContent = 'Sync ✗';
-    pill.title = s.error;
-  } else {
-    pill.classList.add('ok');
-    pill.textContent = 'Sync';
-    pill.title = cfg.lastSync ? 'Dernière sync : ' + new Date(cfg.lastSync).toLocaleString('fr-FR') : 'Synchronisation activée';
-  }
-}
-
-let __lockedEditToastAt = 0;
-function maybeSchedulePush() {
-  // Sauvegarde automatique : CHAQUE modification planifie un cycle
-  // pull→merge→push (debounce 2,5 s). Rien à configurer.
-  getCloudConfig().then(cfg => {
-    if (cfg.token) {
-      scheduleCloudPush(2500);
-      markDirty();
-    } else {
-      // Appareil verrouillé : la modif reste LOCALE. On le dit FORT, avec le
-      // bouton pour déverrouiller — fini les modifs perdues en silence.
-      markDirty();
-      const now = Date.now();
-      if (now - __lockedEditToastAt > 120_000) {
-        __lockedEditToastAt = now;
-        toast('⚠️ Modification NON synchronisée : cet appareil est verrouillé. Elle restera locale tant que le mot de passe n\'est pas saisi.', {
-          type: 'warn', timeout: 12000,
-          action: {
-            label: 'Entrer le mot de passe',
-            onClick: () => ensureAuthGate({
-              onUnlocked: () => {
-                updateSyncPill();
-                updateSaveButton();
-                syncCloud({ reason: 'unlock-from-locked-edit' }).catch(() => {});
-              },
-            }).catch(() => {}),
-          },
-        });
-      }
-    }
-  });
-}
-
-// Clé d'écriture morte (401/403 définitif malgré l'auto-réparation) :
-// on verrouille l'appareil et on re-présente la porte avec une explication.
-let __authGateShown = false;
-function handleAuthFailure() {
-  if (__authGateShown) return;
-  __authGateShown = true;
-  lockDevice().catch(() => {}).finally(() => {
-    ensureAuthGate({
-      message: 'La clé d\'accès a été renouvelée — ressaisis le mot de passe.',
-      onUnlocked: () => {
-        __authGateShown = false;
-        updateSyncPill();
-        updateSaveButton();
-        syncCloud({ reason: 'unlock-after-auth-fail' }).catch(() => {});
-      },
-    }).then(() => { __authGateShown = false; }).catch(() => { __authGateShown = false; });
-  });
-}
-
-let __unsubCloudListener = null;
-function setupCloudListeners() {
-  if (__unsubCloudListener) { try { __unsubCloudListener(); } catch {} }
-  __unsubCloudListener = onCloudStateChange(async (s) => {
-    updateSyncPill(s);
-    const btn = $('#save-btn');
-    if (!btn) return;
-    btn.classList.remove('is-dirty', 'is-syncing', 'is-error', 'is-saved', 'is-unconfigured');
-    const label = btn.querySelector('.savebtn__label');
-    // Pas de token → l'app fait juste de la lecture anonyme. Erreurs = silencieuses.
-    const cloudCfg = await getCloudConfig();
-    const noConfig = !cloudCfg.token;
-
-    if (s.status === 'pushing') {
-      btn.classList.add('is-syncing');
-      if (label) label.textContent = s.message || 'Push cloud…';
-    } else if (s.status === 'pulling') {
-      btn.classList.add('is-syncing');
-      if (label) label.textContent = s.message || 'Récupération…';
-    } else if (s.status === 'error') {
-      if (noConfig) {
-        // Lecture anonyme qui échoue → on ne dérange pas l'utilisateur,
-        // on retombe sur l'état "non configuré" (gris discret).
-        updateSaveButton();
-        return;
-      }
-      if (s.error && /Clé d'écriture invalide/.test(s.error)) {
-        // Clé morte : re-présenter la porte (auto-réparation déjà tentée).
-        handleAuthFailure();
-        updateSaveButton();
-        return;
-      }
-      // Quota ou erreur réseau temporaire = transitoire, on n'alarme pas
-      if (s.error && /Quota GitHub|Réseau injoignable|Synchronisation incomplète/.test(s.error)) {
-        btn.classList.add('is-dirty');
-        if (label) label.textContent = 'En attente';
-        btn.title = 'Sauvegarde différée — réessai automatique.';
-      } else {
-        btn.classList.add('is-error');
-        if (label) label.textContent = 'Erreur';
-        btn.title = 'Erreur : ' + s.error;
-      }
-    } else if (s.status === 'idle' && s.lastSync) {
-      markClean();
-      btn.classList.add('is-saved');
-      if (label) label.textContent = 'Sauvegardé';
-      setTimeout(() => { if (!dirtyState) updateSaveButton(); }, 3000);
-    }
-  });
-}
-
-// ============= SAVE BUTTON STATE =============
-
-let dirtyState = false;
-
-function markDirty() {
-  dirtyState = true;
-  updateSaveButton();
-}
-function markClean() {
-  dirtyState = false;
-  updateSaveButton();
-}
-async function updateSaveButton() {
   const btn = $('#save-btn');
   if (!btn) return;
   btn.hidden = false;
-  const cloudCfg = await getCloudConfig();
   btn.classList.remove('is-dirty', 'is-syncing', 'is-error', 'is-saved', 'is-unconfigured');
+  btn.classList.add(d.btn);
   const label = btn.querySelector('.savebtn__label');
-  if (!cloudCfg.token) {
-    btn.classList.add('is-unconfigured');
-    if (label) label.textContent = 'Déverrouiller';
-    btn.title = 'Entrez le mot de passe pour pouvoir modifier depuis cet appareil.';
-    return;
+  let text = d.label;
+  let title = d.title;
+  if (s.state === 'off' && syncNote) { text = 'Hors sync'; title = syncNote; }
+  if ((s.state === 'offline' || s.state === 'saving') && s.pending) text += ` (${s.pending})`;
+  if (s.state === 'error') title += ' : ' + humanSyncError(s.error);
+  if (label) label.textContent = text;
+  btn.title = title;
+}
+
+function humanSyncError(code) {
+  if (!code) return 'inconnue';
+  if (code === 'permission' || /permission-denied/.test(code)) return 'accès refusé par le serveur (règles Firestore à vérifier)';
+  if (/operation-not-allowed/.test(code)) return 'connexion anonyme désactivée sur le projet Firebase';
+  if (/api-key|app-not-authorized/.test(code)) return 'configuration Firebase invalide';
+  if (/unavailable|network/.test(code)) return 'serveur injoignable';
+  return code;
+}
+
+async function onSaveButtonClick() {
+  const btn = $('#save-btn');
+  if (!RT) { startSync(); return; }
+  btn.classList.add('is-syncing');
+  try {
+    const s = await RT.flushRealtime();
+    if (s.state === 'synced') {
+      await resyncAndRefresh({ quiet: true });
+      toast('✓ Tout est synchronisé sur tous les appareils.', { type: 'ok', timeout: 3000 });
+    } else if (s.state === 'offline') {
+      toast(`Hors ligne — ${s.pending || 0} modification(s) partiront automatiquement au retour du réseau.`, { type: 'info', timeout: 5000 });
+    } else if (s.state === 'error') {
+      toast('Synchronisation en erreur : ' + humanSyncError(s.error), { type: 'err', timeout: 7000 });
+    } else {
+      toast(`Envoi en cours… ${s.pending || 0} modification(s) restante(s).`, { type: 'info', timeout: 4000 });
+    }
+  } finally {
+    updateSyncUi();
   }
-  const lastSync = cloudCfg.lastSync;
-  if (dirtyState) { btn.classList.add('is-dirty'); if (label) label.textContent = 'Sauvegarder'; btn.title = 'Modifications en attente — clic pour synchroniser (⌘S)'; }
-  else if (lastSync) { btn.classList.add('is-saved'); if (label) label.textContent = 'Sauvegardé'; btn.title = 'Tout est synchronisé. Dernière sync : ' + new Date(lastSync).toLocaleString('fr-FR'); }
-  else { if (label) label.textContent = 'Sauvegarder'; btn.title = 'Synchroniser (⌘S)'; }
 }
 
 // ============= SETTINGS DIALOG =============
@@ -2411,47 +2035,24 @@ async function openSettingsDialog() {
 function hookSettingsDialog() {
   settingsHooked = true;
 
-  // SYNCHRONISATION CLOUD (automatique — zéro configuration)
+  // SYNCHRONISATION (automatique — zéro configuration)
   $('#cloud-sync-now').addEventListener('click', async () => {
     const out = $('#cloud-sync-result');
     out.textContent = 'Synchronisation…';
     out.className = 'settings__small';
+    if (!RT) {
+      out.textContent = syncNote || 'Appareil verrouillé — entre le mot de passe pour rejoindre l\'espace partagé.';
+      out.className = 'settings__small err';
+      if (!syncNote) { $('#settings-dialog').close(); startSync(); }
+      return;
+    }
     try {
-      const cfg = await getCloudConfig();
-      if (!cfg.token) {
-        out.textContent = 'Appareil verrouillé — entre le mot de passe pour pouvoir écrire.';
-        out.className = 'settings__small err';
-        $('#settings-dialog').close();
-        ensureAuthGate({
-          onUnlocked: () => {
-            updateSyncPill(); updateSaveButton();
-            syncCloud({ reason: 'unlock-from-settings' }).catch(() => {});
-          },
-        }).catch(() => {});
-        return;
-      }
-      const r = await syncCloud({ reason: 'manual-settings' });
-      STATE.profiles = await getAllProfiles();
-      STATE.imagesByProfile.clear();
-      for (const p of STATE.profiles) {
-        const imgs = await getProfileImages(p.id);
-        if (imgs.length) STATE.imagesByProfile.set(p.id, imgs);
-      }
-      buildFilterChips();
-      render();
-      window.__updateIgBulkCount?.();
-      const p = r.push;
-      out.textContent = p
-        ? `✓ Synchronisé : ${p.profiles} profils + ${p.images} images (${p.chunksPushed ?? p.chunks} fichier(s) envoyés).`
-        : '✓ Tout est déjà à jour.';
-      out.className = 'settings__small ok';
+      const s = await RT.flushRealtime();
+      await resyncAndRefresh({ quiet: true });
+      out.textContent = s.state === 'synced' ? '✓ Tout est synchronisé.' : `État : ${s.state}${s.pending ? ` — ${s.pending} en attente` : ''}${s.error ? ' — ' + humanSyncError(s.error) : ''}`;
+      out.className = 'settings__small ' + (s.state === 'synced' ? 'ok' : 'err');
       refreshSettingsView();
     } catch (e) {
-      if (e.code === 'AUTH') {
-        $('#settings-dialog').close();
-        handleAuthFailure();
-        return;
-      }
       out.textContent = '✗ ' + e.message;
       out.className = 'settings__small err';
     }
@@ -2462,15 +2063,12 @@ function hookSettingsDialog() {
   $('#cloud-lock-btn').addEventListener('click', async () => {
     const ok = await confirmDialog({
       title: 'Verrouiller cet appareil ?',
-      text: 'Les profils resteront lisibles, mais il faudra ressaisir le mot de passe pour modifier.',
+      text: 'Il faudra ressaisir le mot de passe pour retrouver l\'espace partagé. Les données locales sont conservées.',
       okLabel: 'Verrouiller',
     });
     if (!ok) return;
     await lockDevice();
-    updateSyncPill();
-    updateSaveButton();
-    refreshSettingsView();
-    toast('Appareil verrouillé.', { type: 'ok' });
+    location.reload();
   });
 
   // AI
@@ -2540,16 +2138,19 @@ async function refreshSettingsView() {
   $('#microlink-key-status').textContent = mlKey ? '✓ Clé active.' : 'Mode anonyme (50 req/jour).';
   $('#microlink-key-status').className = mlKey ? 'settings__small ok' : 'settings__small';
 
-  // Cloud (statut)
-  const cloudCfg = await getCloudConfig();
-  const cloudBadge = $('#cloud-status-badge');
-  cloudBadge.textContent = cloudCfg.token ? 'Déverrouillé' : 'Verrouillé';
-  cloudBadge.classList.toggle('ok', !!cloudCfg.token);
+  // Synchronisation (statut)
+  const st = RT ? RT.getRealtimeStatus() : { state: 'off' };
+  const badge = $('#cloud-status-badge');
+  const badgeText = { synced: 'Connecté', saving: 'Envoi…', connecting: 'Connexion…', offline: 'Hors ligne', error: 'Erreur', off: (await getSpaceId()) ? 'Inactif' : 'Verrouillé' };
+  badge.textContent = badgeText[st.state] || st.state;
+  badge.classList.toggle('ok', st.state === 'synced');
   const igPending = await igQueueCount();
-  $('#cloud-last-info').textContent = (cloudCfg.lastSync
-    ? `Dernière synchronisation : ${new Date(cloudCfg.lastSync).toLocaleString('fr-FR')}`
-    : 'Jamais synchronisé depuis cet appareil.')
-    + (igPending ? ` · Photos IG en file : ${igPending}` : '');
+  const info = [];
+  if (st.state === 'off') info.push(syncNote || 'Entre le mot de passe pour rejoindre l\'espace partagé.');
+  else if (st.state === 'error') info.push('Erreur : ' + humanSyncError(st.error));
+  else info.push(st.pending ? `${st.pending} modification(s) en attente d'envoi.` : 'Toutes les modifications sont synchronisées.');
+  if (igPending) info.push(`Photos Instagram en file : ${igPending}`);
+  $('#cloud-last-info').textContent = info.join(' · ');
 }
 
 // ============= AI SCAN ON PROFILE =============
@@ -2635,14 +2236,12 @@ document.addEventListener('click', async (e) => {
       }
     }
     const prevIgHandle = lastAiProfile.instagram || '';
-    Object.assign(lastAiProfile, updates);
-    await saveProfile(lastAiProfile);
+    applySaved(await patchProfile(lastAiProfile.id, updates));
     if (updates.instagram && updates.instagram !== prevIgHandle) {
       await deleteProfileImages(lastAiProfile.id);
       STATE.imagesByProfile.delete(lastAiProfile.id);
       enqueueIgScan(lastAiProfile.id);
     }
-    maybeSchedulePush();
     buildFilterChips();
     buildProfessionDatalist();
     render();
@@ -2651,7 +2250,6 @@ document.addEventListener('click', async (e) => {
     }
     dlg.close();
     toast(`${Object.keys(updates).length} champ${Object.keys(updates).length > 1 ? 's' : ''} mis à jour depuis le scan IA.`, { type: 'ok' });
-    maybeSchedulePush();
   }
 });
 
@@ -2810,16 +2408,12 @@ function showContextMenu(profileId, x, y) {
     else if (act === 'mail') location.href = 'mailto:' + p.email;
     else if (act === 'phone')location.href = 'tel:' + p.phone.replace(/\s+/g, '');
     else if (act === 'fav') {
-      p.status = p.status === 'favori' ? '' : 'favori';
-      await saveProfile(p);
-      maybeSchedulePush();
+      applySaved(await patchProfile(p.id, { status: p.status === 'favori' ? '' : 'favori' }));
       render();
       toast(p.status === 'favori' ? 'Ajouté aux favoris.' : 'Retiré des favoris.', { type: 'ok' });
     }
     else if (act === 'collab') {
-      p.status = p.status === 'collabore' ? '' : 'collabore';
-      await saveProfile(p);
-      maybeSchedulePush();
+      applySaved(await patchProfile(p.id, { status: p.status === 'collabore' ? '' : 'collabore' }));
       render();
       toast(p.status === 'collabore' ? 'Marqué "Déjà collaboré".' : 'Statut retiré.', { type: 'ok' });
     }

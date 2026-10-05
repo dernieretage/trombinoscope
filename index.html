@@ -12,7 +12,7 @@
 (function () {
   try {
     if (!('serviceWorker' in navigator)) return;
-    var KEY = 'sw_hardreset_v62';
+    var KEY = 'sw_hardreset_v67';
     if (localStorage.getItem(KEY)) return;
     navigator.serviceWorker.getRegistrations().then(function (regs) {
       if (!regs.length) { localStorage.setItem(KEY, '1'); return; }
@@ -57,7 +57,7 @@
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&display=swap" />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&display=swap" />
 
-<link rel="stylesheet" href="styles.css?v=66" />
+<link rel="stylesheet" href="styles.css?v=67" />
 </head>
 <body data-theme="dark">
 
@@ -97,12 +97,12 @@
         <span class="igbulkbtn__label">Scanner photos IG</span>
         <span class="igbulkbtn__count" id="ig-bulk-count" aria-hidden="true"></span>
       </button>
-      <button class="iconbtn refreshbtn" id="refresh-btn" type="button" aria-label="Rafraîchir depuis le cloud" title="Rafraîchir depuis le cloud">
+      <button class="iconbtn refreshbtn" id="refresh-btn" type="button" aria-label="Relire l'espace partagé" title="Relire l'espace partagé">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5.3L20 5v5h-5l2.2-2.2A6 6 0 0 0 6 12a6 6 0 0 0 11.2 3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
-      <button class="savebtn" id="save-btn" type="button" aria-label="Sauvegarder" title="Sauvegarder (⌘S)">
+      <button class="savebtn" id="save-btn" type="button" aria-label="État de la synchronisation" title="Synchronisation automatique (⌘S force l'envoi)">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5V4zm3 0v6h8V4M8 14h8" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span class="savebtn__label">Sauvegarder</span>
+        <span class="savebtn__label">Synchronisé</span>
         <span class="savebtn__dot" id="save-dot"></span>
       </button>
       <button class="iconbtn" id="theme-toggle" type="button" aria-label="Basculer thème clair/sombre" title="Thème (T)">
@@ -452,13 +452,13 @@
           <span class="settings__badge" id="cloud-status-badge">—</span>
         </header>
         <p class="settings__hint">
-          Chaque ajout, modification ou suppression est <strong>enregistré automatiquement
-          dans le cloud</strong> et apparaît sur tous les appareils en quelques secondes.
-          Aucune configuration : sur un nouvel appareil, le mot de passe d'entrée suffit
-          à déverrouiller l'écriture.
+          Chaque ajout, modification ou suppression est <strong>envoyé instantanément</strong>
+          à l'espace partagé et apparaît en direct sur tous les appareils, comme dans un
+          document partagé. Hors ligne, tout est conservé et part automatiquement au retour
+          du réseau. Aucune configuration : sur un nouvel appareil, le mot de passe d'entrée suffit.
         </p>
         <small class="settings__small" id="cloud-last-info"></small>
-        <small class="settings__small">Version de l'app : <strong id="app-version">v66</strong></small>
+        <small class="settings__small">Version de l'app : <strong id="app-version">v67</strong></small>
         <div class="settings__actions" style="margin-top: 10px; flex-wrap: wrap; gap: 8px;">
           <button type="button" class="btn btn--primary" id="cloud-sync-now">↻ Synchroniser maintenant</button>
           <button type="button" class="btn btn--ghost" id="cloud-diagnose-btn">Diagnostic</button>
@@ -624,6 +624,6 @@
   </article>
 </template>
 
-<script type="module" src="js/app.js?v=66"></script>
+<script type="module" src="js/app.js?v=67"></script>
 </body>
 </html>
