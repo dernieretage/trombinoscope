@@ -413,8 +413,26 @@ async function mainSpace(cfg, spaceId) {
   console.log(IG_SESSION
     ? '🔐 Session Instagram chargée (mode authentifié).'
     : '⚠ AUCUNE session Instagram : depuis fin 2026 l\'API répond 401 en anonyme.');
-  const snap = await getDocs(col('profiles'));
-  const profiles = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => !p.deleted);
+  let snap = await getDocs(col('profiles'));
+  let profiles = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => !p.deleted);
+
+  // --- IMPORT : data/robot-import.json (déposé sur gh-pages) → espace partagé ---
+  const importFile = join(process.cwd(), 'data', 'robot-import.json');
+  if (existsSync(importFile)) {
+    let incoming = [];
+    try { incoming = JSON.parse(readFileSync(importFile, 'utf8')).profiles || []; }
+    catch (e) { console.log('Fichier d\'import illisible :', e.message); }
+    if (incoming.length) {
+      const { importIntoSpace } = await import(pathToFileURL(join(process.cwd(), 'scripts', 'space-import.mjs')).href);
+      console.log(`Import de ${incoming.length} profil(s) depuis data/robot-import.json…`);
+      const r = await importIntoSpace(db, spaceId, profiles, incoming);
+      for (const l of r.lines) console.log(l);
+      snap = await getDocs(col('profiles'));
+      profiles = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => !p.deleted);
+    }
+    unlinkSync(importFile); // consommé : la publication (git add data) retire le fichier
+    console.log('Fichier d\'import consommé.');
+  }
   // Handles à re-traiter : variable FORCE_HANDLES et/ou fichier
   // data/robot-force-handles.txt (un handle par ligne, vidé après traitement).
   const forceFile = join(process.cwd(), 'data', 'robot-force-handles.txt');
