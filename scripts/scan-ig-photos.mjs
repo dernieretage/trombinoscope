@@ -438,9 +438,21 @@ async function mainSpace(cfg, spaceId) {
   const forceFile = join(process.cwd(), 'data', 'robot-force-handles.txt');
   const fromFile = existsSync(forceFile) ? readFileSync(forceFile, 'utf8').split(/\r?\n/) : [];
   const forced = new Set([...String(process.env.FORCE_HANDLES || '').split(','), ...fromFile].map((x) => cleanHandle(x)).filter(Boolean));
-  const candidates = profiles.filter((p) => p.instagram && (forced.has(cleanHandle(p.instagram)) || !Object.keys(p.imgs || {}).length));
-  console.log(`Espace ${spaceId.slice(0, 6)}… — profils : ${profiles.length} | à illustrer : ${candidates.length}${forced.size ? ` (dont ${forced.size} forcé(s))` : ''}`);
-  if (!candidates.length) { console.log('Rien à faire.'); return; }
+  // Mémoire des échecs (data/robot-ig-attempts.json, publiée avec les données) :
+  // un compte privé ou introuvable est réessayé de plus en plus rarement
+  // (6 h, 12 h, 24 h… jusqu'à 7 jours) pour laisser la place aux autres.
+  const attemptsFile = join(process.cwd(), 'data', 'robot-ig-attempts.json');
+  let attempts = {};
+  try { attempts = JSON.parse(readFileSync(attemptsFile, 'utf8')) || {}; } catch {}
+  const nowMs = Date.now();
+  const wanted = profiles.filter((p) => p.instagram && (forced.has(cleanHandle(p.instagram)) || !Object.keys(p.imgs || {}).length));
+  const candidates = wanted.filter((p) => forced.has(cleanHandle(p.instagram)) || !(attempts[cleanHandle(p.instagram)]?.nextAt > nowMs));
+  console.log(`Espace ${spaceId.slice(0, 6)}… — profils : ${profiles.length} | sans photo : ${wanted.length} | à tenter maintenant : ${candidates.length}${forced.size ? ` (dont ${forced.size} forcé(s))` : ''}`);
+  const saveAttempts = () => {
+    for (const h of Object.keys(attempts)) if (attempts[h].nextAt < nowMs - 30 * 86400000) delete attempts[h]; // ménage
+    writeFileSync(attemptsFile, JSON.stringify(attempts, null, 1) + '\n');
+  };
+  if (!candidates.length) { console.log('Rien à faire.'); saveAttempts(); return; }
 
   const todo = shuffle(candidates).slice(0, MAX_PER_RUN);
   let added = 0;
@@ -490,11 +502,15 @@ async function mainSpace(cfg, spaceId) {
         added++;
         console.log(`  ✓ @${h} (${p.name || ''}) — photo déposée dans l\'espace [${via}]`);
       }
+      delete attempts[h];
     } catch (e) {
-      console.log(`  ✗ @${h} (${p.name || ''}) — ${e.message}`);
+      const n = (attempts[h]?.n || 0) + 1;
+      attempts[h] = { n, nextAt: Date.now() + Math.min(7 * 86400000, 6 * 3600000 * 2 ** (n - 1)), last: e.message.slice(0, 80) };
+      console.log(`  ✗ @${h} (${p.name || ''}) — ${e.message} (réessai dans ${Math.round((attempts[h].nextAt - Date.now()) / 3600000)} h)`);
     }
     await sleep(jitter(DELAY_MS));
   }
+  saveAttempts();
   console.log(`\n${added} photo(s) ajoutée(s) à l\'espace partagé.`);
   if (fromFile.some((x) => cleanHandle(x))) {
     const left = fromFile.map(cleanHandle).filter((h) => h && !todo.some((p) => cleanHandle(p.instagram) === h));
