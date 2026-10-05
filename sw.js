@@ -1,6 +1,6 @@
 // Service worker — network-first pour les pages HTML (évite les ghost old data
 // après déploiement), cache-first pour CSS/JS statiques avec version-busting.
-const VERSION = 'trombinoscope-v66';
+const VERSION = 'trombinoscope-v67';
 const ASSETS = [
   './',
   './index.html',
@@ -11,7 +11,9 @@ const ASSETS = [
   './js/ui.js',
   './js/utils.js',
   './js/ig.js',
-  './js/cloud.js',
+  './js/realtime.js',
+  './js/merge.js',
+  './js/firebase-config.js',
   './js/ai.js',
   './js/enrichment.js',
   './js/auth.js',
@@ -35,7 +37,19 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  // bypass pour autres origines (Google Fonts, GitHub API, etc.) — réseau direct
+  // SDK Firebase (URL versionnée, immuable) : cache-first → l'app démarre
+  // hors-ligne même si le CDN est injoignable. Le trafic Firestore lui-même
+  // (firestore.googleapis.com) n'est jamais intercepté.
+  if (url.hostname === 'www.gstatic.com' && url.pathname.startsWith('/firebasejs/')) {
+    e.respondWith(
+      caches.match(req).then(cached => cached || fetch(req).then(res => {
+        if (res.ok) { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)).catch(() => {}); }
+        return res;
+      }))
+    );
+    return;
+  }
+  // bypass pour autres origines (Google Fonts, Firestore, etc.) — réseau direct
   if (url.origin !== location.origin) return;
 
   // DONNÉES CLOUD (manifest + chunks même-origine) : réseau pur, jamais de

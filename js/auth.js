@@ -1,15 +1,13 @@
-// Porte d'entrée du Trombinoscope — v2 « clé auto-réparante ».
+// Porte d'entrée du Trombinoscope.
 //
-// Le mot de passe saisi sert de clé : il déchiffre (PBKDF2 + AES-256-GCM) le
-// token d'écriture GitHub embarqué ci-dessous. Mot de passe correct = le
-// déchiffrement réussit (le tag GCM valide) = l'appareil peut lire ET écrire.
-// Aucun token à coller, aucune configuration par appareil.
-//
-// v2 : le mot de passe est retenu sur l'appareil (outil interne). À chaque
-// lancement, le token est RE-DÉRIVÉ depuis le coffre courant. Conséquence :
-// quand la clé GitHub est renouvelée (scripts/seal-vault.mjs → nouveau coffre
-// déployé), tous les appareils récupèrent la nouvelle clé silencieusement,
-// sans re-saisie. Si le mot de passe change, la porte se re-présente.
+// Le mot de passe est demandé UNE fois par nouvel appareil. Il sert à deux
+// choses, sans jamais être stocké :
+//  1. le vérifier : il doit déchiffrer le coffre ci-dessous (PBKDF2 +
+//     AES-256-GCM) — déchiffrement réussi = bon mot de passe ;
+//  2. en dériver l'identifiant (secret) de l'espace partagé dans la base temps
+//     réel. Sans le mot de passe, impossible de trouver ou de lire les données.
+// Tous les appareils qui saisissent le même mot de passe rejoignent le même
+// espace. Changer le mot de passe = re-sceller le coffre (scripts/seal-vault.mjs).
 
 import { getMeta, setMeta } from './store.js';
 
@@ -22,131 +20,95 @@ const VAULT = {
   iter: 310000,
 };
 
-const AUTH_FLAG = 'auth_ok_v1';
-const META_PW = 'gate_pw';            // mot de passe retenu (outil interne)
-const META_VAULT_VER = 'gate_vault_ver'; // version du coffre au dernier déverrouillage
+const META_SPACE = 'rt_space';
+const SPACE_SALT = 'trombinoscope/espace-partage/v1';
+const SPACE_ITER = 150000;
+const IS_DEV_HOST = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 
 function b64ToU8(b64) {
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
-async function deriveKey(password) {
+async function pbkdf2Bits(password, salt, iterations) {
   const enc = new TextEncoder();
-  const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: b64ToU8(VAULT.salt), iterations: VAULT.iter, hash: 'SHA-256' },
-    baseKey,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['decrypt'],
-  );
+  const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
+  return crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, baseKey, 256);
 }
 
-/** Tente le déchiffrement. Retourne le token si le mot de passe est bon, sinon null. */
-export async function tryUnlock(password) {
-  if (!password) return null;
+/** true si le mot de passe déchiffre le coffre. Le contenu déchiffré est jeté. */
+async function passwordIsValid(password) {
+  if (!password) return false;
   try {
-    const key = await deriveKey(password.trim());
-    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64ToU8(VAULT.iv) }, key, b64ToU8(VAULT.ct));
-    return new TextDecoder().decode(pt);
+    const bits = await pbkdf2Bits(password, b64ToU8(VAULT.salt), VAULT.iter);
+    const key = await crypto.subtle.importKey('raw', bits, 'AES-GCM', false, ['decrypt']);
+    await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64ToU8(VAULT.iv) }, key, b64ToU8(VAULT.ct));
+    return true;
   } catch {
-    return null;
+    return false;
   }
+}
+
+async function deriveSpaceId(password) {
+  const bits = await pbkdf2Bits(password, new TextEncoder().encode(SPACE_SALT), SPACE_ITER);
+  return [...new Uint8Array(bits)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Essaie un mot de passe ; en cas de succès, l'appareil rejoint l'espace partagé. */
+async function unlockWith(password) {
+  const pw = String(password || '').trim();
+  if (!(await passwordIsValid(pw))) return null;
+  const id = await deriveSpaceId(pw);
+  await setMeta(META_SPACE, { id, vault: VAULT.salt });
+  return id;
+}
+
+/**
+ * Identifiant de l'espace partagé de cet appareil, ou null s'il faut saisir
+ * le mot de passe. (Sur un serveur de développement local, `?space=test-…`
+ * permet de tester dans un espace isolé.)
+ */
+export async function getSpaceId() {
+  if (IS_DEV_HOST) {
+    const dev = new URLSearchParams(location.search).get('space');
+    if (dev && /^test-[a-z0-9-]{27,}$/.test(dev)) return dev;
+  }
+  const v = await getMeta(META_SPACE);
+  // Coffre re-scellé depuis (nouveau mot de passe) → il faut le ressaisir.
+  if (v && v.id && v.vault === VAULT.salt) return v.id;
+  return null;
 }
 
 export async function isUnlocked() {
-  return !!(await getMeta(AUTH_FLAG)) && !!(await getMeta('cloud_repo_token'));
+  return !!(await getSpaceId());
 }
 
 export async function lock() {
-  await setMeta(AUTH_FLAG, null);
-  await setMeta(META_PW, null);
-  await setMeta(META_VAULT_VER, null);
-  await setMeta('cloud_repo_token', null);
-}
-
-async function storeUnlock(password, token) {
-  await setMeta('cloud_repo_token', token);
-  await setMeta('cloud_auto', true);
-  await setMeta(AUTH_FLAG, true);
-  await setMeta(META_PW, password.trim());
-  await setMeta(META_VAULT_VER, VAULT.ver);
+  await setMeta(META_SPACE, null);
 }
 
 /**
- * Vérifie activement qu'un token a le droit d'écriture sur le dépôt.
- * true = oui ; false = mort/sans droits ; null = indéterminé (hors-ligne,
- * 5xx, rate-limit) → ne pas verrouiller sur un doute.
+ * Appareils déjà déverrouillés avec l'ancienne version : le mot de passe
+ * qu'elle avait retenu permet de rejoindre l'espace sans rien ressaisir.
+ * Il est ensuite effacé, ainsi que tout ce que l'ancien système stockait.
  */
-async function tokenWorks(token) {
+export async function migrateLegacyUnlock() {
   try {
-    const res = await fetch('https://api.github.com/repos/dernieretage/trombinoscope', {
-      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' },
-      cache: 'no-store',
-    });
-    if (res.status === 401) return false;
-    if (res.status === 403) {
-      // 403 peut être un rate-limit (token valide, quota épuisé) → indéterminé
-      return res.headers.get('x-ratelimit-remaining') === '0' ? null : false;
+    if (!(await getSpaceId())) {
+      const old = await getMeta('gate_pw');
+      if (old) await unlockWith(old);
     }
-    if (!res.ok) return null;
-    const data = await res.json();
-    return !!data?.permissions?.push;
-  } catch { return null; }
+  } catch {}
+  for (const k of ['gate_pw', 'cloud_repo_token', 'gate_vault_ver', 'auth_ok_v1', 'cloud_auto', 'sync_token', 'sync_gist_id']) {
+    try { if ((await getMeta(k)) != null) await setMeta(k, null); } catch {}
+  }
 }
 
 /**
- * Auto-réparation : re-dérive le token depuis le coffre COURANT avec le mot de
- * passe retenu. À appeler au boot (silencieux) et quand une écriture échoue en
- * 401/403 (`force: true`).
- *
- * Retours :
- *  - { ok:true, changed:boolean }  → token frais en place
- *  - { locked:true }               → pas de mot de passe retenu, ou mot de passe
- *                                    devenu invalide (coffre rescellé avec un
- *                                    autre mot de passe) → appareil verrouillé,
- *                                    il faut re-présenter la porte.
- */
-export async function ensureFreshToken({ force = false } = {}) {
-  const pw = await getMeta(META_PW);
-  const curToken = await getMeta('cloud_repo_token');
-  const unlockedVer = await getMeta(META_VAULT_VER);
-
-  if (!pw) {
-    // Appareils d'avant v2 : un token hérité traîne mais pas de mot de passe
-    // retenu. On le VALIDE ACTIVEMENT : sinon l'appareil affiche « Sync »
-    // en vert pendant des mois avec une clé morte, et toutes ses modifs
-    // restent locales en silence (l'incident de l'été 2026).
-    if (force) { await lock(); return { locked: true }; }
-    if (!curToken) return { locked: true };
-    const works = await tokenWorks(curToken);
-    if (works === false) { await lock(); return { locked: true }; }
-    return { ok: true, changed: false };
-  }
-
-  if (!force && curToken && unlockedVer === VAULT.ver) {
-    return { ok: true, changed: false }; // rien à faire
-  }
-
-  const token = await tryUnlock(pw);
-  if (!token) {
-    // Le coffre a été rescellé avec un AUTRE mot de passe → re-saisie requise.
-    await lock();
-    return { locked: true };
-  }
-  const changed = token !== curToken;
-  await storeUnlock(pw, token);
-  return { ok: true, changed };
-}
-
-/**
- * Affiche la porte mot de passe si l'appareil n'est pas déjà déverrouillé.
- * Résout quand l'accès est acquis. onUnlocked est appelé uniquement lors d'un
- * NOUVEAU déverrouillage (pas si le token était déjà en place).
- * `message` : ligne d'explication optionnelle (ex. après expiration de la clé).
+ * Affiche la porte si l'appareil n'est pas encore déverrouillé.
+ * onUnlocked(spaceId) n'est appelé que lors d'un NOUVEAU déverrouillage.
  */
 export async function ensureAuthGate({ onUnlocked, message } = {}) {
-  if (await isUnlocked()) return { alreadyUnlocked: true };
+  if (await getSpaceId()) return { alreadyUnlocked: true };
   if (document.getElementById('auth-gate')) return { alreadyShowing: true };
 
   return new Promise((resolve) => {
@@ -177,24 +139,25 @@ export async function ensureAuthGate({ onUnlocked, message } = {}) {
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (btn.disabled) return;
       err.hidden = true;
       btn.disabled = true;
       btn.textContent = 'Vérification…';
-      const token = await tryUnlock(input.value);
-      if (token) {
-        await storeUnlock(input.value, token);
+      const spaceId = await unlockWith(input.value).catch(() => null);
+      if (spaceId) {
         overlay.classList.add('authgate--out');
         setTimeout(() => overlay.remove(), 350);
-        try { onUnlocked?.(); } catch {}
-        resolve({ unlocked: true });
+        try { onUnlocked?.(spaceId); } catch {}
+        resolve({ unlocked: true, spaceId });
       } else {
         btn.disabled = false;
         btn.textContent = 'Entrer';
         err.hidden = false;
         input.value = '';
         input.focus();
-        overlay.querySelector('.authgate__box').classList.remove('authgate__box--shake');
-        requestAnimationFrame(() => overlay.querySelector('.authgate__box').classList.add('authgate__box--shake'));
+        const box = overlay.querySelector('.authgate__box');
+        box.classList.remove('authgate__box--shake');
+        requestAnimationFrame(() => box.classList.add('authgate__box--shake'));
       }
     });
   });

@@ -1,6 +1,9 @@
 // Couche de stockage : IndexedDB pour les profils et images, localStorage pour les préférences UI
 // Conçue pour scaler à plusieurs milliers de profils avec images en base64
 
+import { profileFields, sameValue, stampsOf, maxStamp, stampChanges } from './merge.js';
+export { profileFields, sameValue, stampsOf, maxStamp };
+
 const DB_NAME = 'trombinoscope';
 const DB_VERSION = 1;
 const STORE_PROFILES = 'profiles';
@@ -54,6 +57,119 @@ function reqToPromise(req) {
   });
 }
 
+// ============= JOURNAL DES MODIFICATIONS LOCALES =============
+// Chaque écriture locale (profil, image, suppression) est consignée dans un
+// journal PERSISTANT (meta 'rt_pending') AVANT toute tentative d'envoi, puis
+// signalée à la couche temps réel. Une entrée n'est retirée qu'après accusé
+// de réception du serveur. Conséquence : une modification ne peut plus rester
+// coincée sur un appareil — app fermée, hors-ligne, crash : elle repart au
+// prochain lancement.
+
+const changeListeners = new Set();
+export function onLocalChange(cb) { changeListeners.add(cb); return () => changeListeners.delete(cb); }
+function emitLocalChange(evt) {
+  for (const cb of changeListeners) { try { cb(evt); } catch {} }
+}
+
+const PENDING_PREFIX = 'rt_pending:';
+let pendingChain = Promise.resolve();
+let legacyPendingMigrated = false;
+
+// Une entrée de journal = un enregistrement meta par profil ('rt_pending:{id}').
+// Un enregistrement par profil (et non une liste unique) : deux onglets du même
+// appareil ne peuvent pas s'écraser mutuellement le journal.
+async function migrateLegacyPending() {
+  if (legacyPendingMigrated) return;
+  legacyPendingMigrated = true;
+  try {
+    const old = await getMeta('rt_pending');
+    if (old && typeof old === 'object') {
+      for (const [id, v] of Object.entries(old)) if (v && v.at) await setMeta(PENDING_PREFIX + id, v);
+      await setMeta('rt_pending', null);
+    }
+  } catch {}
+}
+
+/** Consigne une modification locale de profil à envoyer ('upsert' | 'delete'). */
+export function markPending(id, op = 'upsert') {
+  if (!id) return pendingChain;
+  pendingChain = pendingChain.then(async () => {
+    await migrateLegacyPending();
+    await setMeta(PENDING_PREFIX + id, { op, at: Date.now() });
+  }).catch(() => {});
+  return pendingChain;
+}
+
+export async function getPending() {
+  await pendingChain;
+  await migrateLegacyPending();
+  const store = await tx(STORE_META);
+  const range = IDBKeyRange.bound(PENDING_PREFIX, PENDING_PREFIX + '\uffff');
+  const out = {};
+  await new Promise((resolve) => {
+    const req = store.openCursor(range);
+    req.onsuccess = () => {
+      const c = req.result;
+      if (c) { if (c.value?.value?.at) out[String(c.key).slice(PENDING_PREFIX.length)] = c.value.value; c.continue(); }
+      else resolve();
+    };
+    req.onerror = () => resolve();
+  });
+  return out;
+}
+
+/** Retire une entrée, sauf si une modification plus récente est arrivée entre-temps. */
+export function clearPending(id, at) {
+  pendingChain = pendingChain.then(async () => {
+    const cur = await getMeta(PENDING_PREFIX + id);
+    if (cur && (at === undefined || cur.at <= at)) {
+      const store = await tx(STORE_META, 'readwrite');
+      await reqToPromise(store.delete(PENDING_PREFIX + id));
+    }
+  }).catch(() => {});
+  return pendingChain;
+}
+
+/** Vide tout le journal (réinitialisation locale de l'appareil). */
+export async function clearAllPending() {
+  await pendingChain;
+  const store = await tx(STORE_META, 'readwrite');
+  const range = IDBKeyRange.bound(PENDING_PREFIX, PENDING_PREFIX + '\uffff');
+  await new Promise((resolve) => {
+    const req = store.openCursor(range);
+    req.onsuccess = () => { const c = req.result; if (c) { c.delete(); c.continue(); } else resolve(); };
+    req.onerror = () => resolve();
+  });
+  await setMeta('rt_pending', null);
+}
+
+function noteLocalChange(id, op = 'upsert') {
+  markPending(id, op);
+  emitLocalChange({ id, op });
+}
+
+// ============= HORODATAGE PAR CHAMP =============
+// Voir merge.js : chaque profil porte `_f` (horodatage de chaque champ, plus
+// `imgs` pour le jeu de photos). La fusion entre appareils se fait champ par
+// champ, le plus récent gagne.
+
+/** Lecture-modification-écriture atomique d'un profil (une seule transaction IDB). */
+function rmwProfile(id, fn) {
+  return openDB().then((db) => new Promise((resolve, reject) => {
+    const t = db.transaction(STORE_PROFILES, 'readwrite');
+    const s = t.objectStore(STORE_PROFILES);
+    let out;
+    const g = s.get(id);
+    g.onsuccess = () => {
+      out = fn(g.result);
+      if (out && out.write) s.put(out.write);
+    };
+    t.oncomplete = () => resolve(out);
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error || new Error('transaction annulée'));
+  }));
+}
+
 // ============= PROFILS =============
 
 /**
@@ -104,19 +220,65 @@ export async function getProfile(id) {
   return reqToPromise(store.get(id));
 }
 
+/**
+ * Enregistre un profil complet. Seuls les champs réellement modifiés sont
+ * horodatés ; une sauvegarde sans changement n'écrit rien (et ne synchronise rien).
+ */
 export async function saveProfile(profile) {
   if (!profile.id) profile.id = uid();
   if (!profile.createdAt) profile.createdAt = new Date().toISOString();
-  profile.updatedAt = new Date().toISOString();
-  const store = await tx(STORE_PROFILES, 'readwrite');
-  await reqToPromise(store.put(profile));
+  delete profile.imgs; delete profile.deleted; delete profile.deletedAt;
+  const res = await rmwProfile(profile.id, (prev) => {
+    const now = Date.now();
+    const next = { ...profile };
+    const changed = stampChanges(next, prev, now);
+    if (prev && !changed.length) return { saved: prev, changed };
+    next.updatedAt = new Date(now).toISOString();
+    return { write: next, saved: next, changed };
+  });
+  profile._f = res.saved._f;
+  profile.updatedAt = res.saved.updatedAt;
+  if (res.write) noteLocalChange(profile.id, 'upsert');
   return profile;
 }
 
+/**
+ * Modifie QUELQUES champs d'un profil en partant de sa version la plus
+ * récente en base (jamais d'une copie périmée en mémoire). Retourne le profil
+ * à jour, ou null s'il n'existe plus.
+ */
+export async function patchProfile(id, patch) {
+  const res = await rmwProfile(id, (prev) => {
+    if (!prev) return { saved: null };
+    const now = Date.now();
+    const next = { ...prev, ...patch, id };
+    const changed = stampChanges(next, prev, now);
+    if (!changed.length) return { saved: prev };
+    next.updatedAt = new Date(now).toISOString();
+    return { write: next, saved: next };
+  });
+  if (res.write) noteLocalChange(id, 'upsert');
+  return res.saved;
+}
+
+/** Note que le jeu de photos d'un profil a changé (horodatage `imgs`). */
+async function touchImages(profileId) {
+  await rmwProfile(profileId, (prev) => {
+    if (!prev) return null;
+    const now = Date.now();
+    const next = { ...prev, _f: { ...stampsOf(prev), imgs: now }, updatedAt: new Date(now).toISOString() };
+    return { write: next };
+  }).catch(() => {});
+}
+async function noteImagesChange(profileId) {
+  await touchImages(profileId);
+  noteLocalChange(profileId, 'upsert');
+}
+
 export async function deleteProfile(id) {
-  // Tombstone AVANT tout : la suppression doit se propager aux autres devices
+  // Journal AVANT tout : la suppression doit partir vers les autres appareils
   // même si la suite échoue à mi-chemin.
-  await addTombstone(id).catch(() => {});
+  await markPending(id, 'delete');
   // Récupérer les keys d'images pour révoquer les objectURL avant suppression
   const imgs = await getProfileImages(id).catch(() => []);
   const store = await tx(STORE_PROFILES, 'readwrite');
@@ -143,23 +305,36 @@ export async function deleteProfile(id) {
     const u = await import('./utils.js');
     for (const img of imgs) u.revokeObjectURL(img.key);
   } catch {}
+  noteLocalChange(id, 'delete');
 }
 
 export async function bulkSaveProfiles(profiles) {
   const db = await openDB();
-  const t = db.transaction(STORE_PROFILES, 'readwrite');
-  const store = t.objectStore(STORE_PROFILES);
-  const now = new Date().toISOString();
-  for (const p of profiles) {
-    if (!p.id) p.id = uid();
-    if (!p.createdAt) p.createdAt = now;
-    p.updatedAt = now;
-    store.put(p);
-  }
-  return new Promise((resolve, reject) => {
+  const written = [];
+  await new Promise((resolve, reject) => {
+    const t = db.transaction(STORE_PROFILES, 'readwrite');
+    const store = t.objectStore(STORE_PROFILES);
+    const now = Date.now();
+    const iso = new Date(now).toISOString();
+    for (const p of profiles) {
+      if (!p.id) p.id = uid();
+      if (!p.createdAt) p.createdAt = iso;
+      delete p.imgs; delete p.deleted; delete p.deletedAt;
+      const g = store.get(p.id);
+      g.onsuccess = () => {
+        const prev = g.result;
+        const changed = stampChanges(p, prev, now);
+        if (prev && !changed.length) return;
+        p.updatedAt = iso;
+        store.put(p);
+        written.push(p.id);
+      };
+    }
     t.oncomplete = () => resolve();
     t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error || new Error('transaction annulée'));
   });
+  for (const id of written) noteLocalChange(id, 'upsert');
 }
 
 // ============= IMAGES =============
@@ -182,6 +357,7 @@ export async function saveImage(profileId, index, blob) {
     const u = await import('./utils.js');
     u.revokeObjectURL(key);
   } catch {}
+  await noteImagesChange(profileId);
   return key;
 }
 
@@ -193,11 +369,11 @@ export async function getImage(key) {
 // Fallback in-memory image cache (utilisé quand IDB est plein/refuse,
 // notamment en navigation privée Safari). Vit le temps de la session.
 const memoryImages = new Map(); // profileId -> [imgRecord, ...]
-export function setMemoryImage(profileId, index, blob, type) {
+export function setMemoryImage(profileId, index, blob, type, v) {
   const key = `${profileId}::${index}`;
   const list = memoryImages.get(profileId) || [];
   const filtered = list.filter(it => it.key !== key);
-  filtered.push({ key, profileId, index, blob, type, size: blob.size, addedAt: Date.now(), inMemory: true });
+  filtered.push({ key, profileId, index, blob, type, size: blob.size, addedAt: Date.now(), inMemory: true, v });
   filtered.sort((a, b) => a.index - b.index);
   memoryImages.set(profileId, filtered);
 }
@@ -245,10 +421,11 @@ export async function deleteImage(key) {
     const filtered = list.filter(it => it.key !== key);
     if (filtered.length) memoryImages.set(pid, filtered); else memoryImages.delete(pid);
   }
+  await noteImagesChange(pid);
 }
 
 export async function deleteProfileImages(profileId) {
-  memoryImages.delete(profileId); // purge le cache mémoire (voir deleteImage)
+  const had = memoryImages.delete(profileId); // purge le cache mémoire (voir deleteImage)
   const imgStore = await tx(STORE_IMAGES, 'readwrite');
   const range = IDBKeyRange.bound(`${profileId}::`, `${profileId}::￿`);
   const req = imgStore.openCursor(range);
@@ -271,6 +448,95 @@ export async function deleteProfileImages(profileId) {
     const u = await import('./utils.js');
     for (const k of keys) u.revokeObjectURL(k);
   } catch {}
+  if (keys.length || had) await noteImagesChange(profileId);
+}
+
+// ============= APPLICATION DES MODIFICATIONS DISTANTES =============
+// Écritures venues du serveur : elles NE sont PAS consignées dans le journal
+// et NE déclenchent PAS d'envoi (sinon boucle d'écho infinie entre appareils).
+
+/** Écrit un profil tel quel (conserve ses horodatages d'origine). */
+export async function putProfileRaw(profile) {
+  const store = await tx(STORE_PROFILES, 'readwrite');
+  await reqToPromise(store.put(profile));
+}
+
+/** Aligne l'horodatage du jeu de photos local sur celui du serveur. */
+export async function setImagesStampRaw(id, stamp) {
+  await rmwProfile(id, (prev) => {
+    if (!prev) return null;
+    return { write: { ...prev, _f: { ...stampsOf(prev), imgs: stamp } } };
+  });
+}
+
+/** Supprime un profil et toutes ses images, sans journal ni tombstone. */
+export async function deleteProfileRaw(id) {
+  const store = await tx(STORE_PROFILES, 'readwrite');
+  await reqToPromise(store.delete(id));
+  memoryImages.delete(id);
+  const imgStore = await tx(STORE_IMAGES, 'readwrite');
+  const range = IDBKeyRange.bound(`${id}::`, `${id}::\uffff`);
+  const keys = [];
+  await new Promise((resolve) => {
+    const req = imgStore.openCursor(range);
+    req.onsuccess = () => {
+      const c = req.result;
+      if (c) { keys.push(c.value.key); c.delete(); c.continue(); } else resolve();
+    };
+    req.onerror = () => resolve();
+  });
+  try {
+    const u = await import('./utils.js');
+    for (const k of keys) u.revokeObjectURL(k);
+  } catch {}
+}
+
+/** Écrit une image reçue du serveur (avec sa version v). Repli mémoire si quota. */
+export async function putImageRaw(rec) {
+  try {
+    const store = await tx(STORE_IMAGES, 'readwrite');
+    await reqToPromise(store.put(rec));
+  } catch (e) {
+    if (e?.name === 'QuotaExceededError') {
+      setMemoryImage(rec.profileId, rec.index, rec.blob, rec.type, rec.v);
+    } else {
+      throw e;
+    }
+  }
+  try {
+    const u = await import('./utils.js');
+    u.revokeObjectURL(rec.key);
+  } catch {}
+}
+
+export async function deleteImageRaw(key) {
+  const store = await tx(STORE_IMAGES, 'readwrite');
+  await reqToPromise(store.delete(key));
+  const pid = String(key).split('::')[0];
+  const list = memoryImages.get(pid);
+  if (list) {
+    const filtered = list.filter(it => it.key !== key);
+    if (filtered.length) memoryImages.set(pid, filtered); else memoryImages.delete(pid);
+  }
+  try {
+    const u = await import('./utils.js');
+    u.revokeObjectURL(key);
+  } catch {}
+}
+
+/** Enregistre la version serveur d'une image locale (après envoi ou adoption). */
+export async function setImageVersion(key, v) {
+  const store = await tx(STORE_IMAGES, 'readwrite');
+  const rec = await reqToPromise(store.get(key));
+  if (rec) {
+    rec.v = v;
+    await reqToPromise(store.put(rec));
+    return;
+  }
+  const pid = String(key).split('::')[0];
+  const mem = memoryImages.get(pid);
+  const m = mem?.find(it => it.key === key);
+  if (m) m.v = v;
 }
 
 // ============= META =============
@@ -308,29 +574,14 @@ export async function clearAllProfilesAndImages() {
   } catch {}
 }
 
-// ============= TOMBSTONES (propagation des suppressions) =============
-// Quand un profil est supprimé, on garde une trace {id, deletedAt} qui voyage
-// dans le manifest cloud. Sans ça, un device qui a encore le profil le
-// "ressusciterait" à son prochain push (les push sont des snapshots complets).
-
-const TOMBSTONE_TTL_MS = 60 * 24 * 3600 * 1000; // 60 jours puis purge
+// ============= TOMBSTONES (ancien système) =============
+// Les suppressions passent désormais par le journal (rt_pending) puis une
+// pierre tombale côté serveur. On ne lit plus les anciennes tombstones locales
+// qu'une fois, pour la migration vers le temps réel.
 
 export async function getTombstones() {
   const list = (await getMeta('tombstones')) || [];
   return Array.isArray(list) ? list : [];
-}
-
-export async function addTombstone(id) {
-  const list = await getTombstones();
-  const now = new Date().toISOString();
-  const filtered = list.filter(t => t.id !== id);
-  filtered.push({ id, deletedAt: now });
-  await setMeta('tombstones', pruneTombstones(filtered));
-}
-
-export function pruneTombstones(list) {
-  const cutoff = Date.now() - TOMBSTONE_TTL_MS;
-  return (list || []).filter(t => (Date.parse(t.deletedAt) || 0) > cutoff);
 }
 
 // ============= EXPORT / IMPORT JSON =============
@@ -354,94 +605,34 @@ export async function exportAll() {
   return out;
 }
 
-/**
- * Export "chunked" pour Gist GitHub :
- * - Fichier `trombinoscope.json` = metadata + profils (sans images)
- * - Fichiers `trombinoscope-images-NN.json` = chunks d'images en base64 (~600 KB chacun)
- * Cela permet de dépasser la limite recommandée Gist (~1 MB par fichier).
- */
-export async function exportAllChunked({ chunkBytes = 600_000 } = {}) {
-  const profiles = await getAllProfiles();
-  const result = {
-    files: {},
-    totalImages: 0,
-    totalSize: 0,
-  };
-
-  // Collecte de toutes les images en base64
-  const allImages = [];
-  for (const p of profiles) {
-    const imgs = await getProfileImages(p.id);
-    for (const img of imgs) {
-      const b64 = await blobToBase64(img.blob);
-      allImages.push({ key: img.key, profileId: img.profileId, index: img.index, type: img.type, data: b64 });
-    }
-  }
-  result.totalImages = allImages.length;
-
-  // Découpe en chunks
-  const chunks = [];
-  let current = [];
-  let currentSize = 0;
-  for (const img of allImages) {
-    const sz = img.data.length;
-    if (currentSize + sz > chunkBytes && current.length > 0) {
-      chunks.push(current);
-      current = [];
-      currentSize = 0;
-    }
-    current.push(img);
-    currentSize += sz;
-  }
-  if (current.length) chunks.push(current);
-
-  // Manifest principal (metadata + profils, pas d'images)
-  const tombstones = pruneTombstones(await getTombstones());
-  const manifest = {
-    version: 3,
-    exportedAt: new Date().toISOString(),
-    profiles,
-    tombstones,
-    imageChunks: chunks.length,
-    totalImages: allImages.length,
-  };
-  // Pretty-print pour le manifest (lisible si l'user inspecte le repo GitHub).
-  result.files['trombinoscope.json'] = JSON.stringify(manifest, null, 2);
-  result.totalSize += result.files['trombinoscope.json'].length;
-
-  // Fichiers de chunks (pas de pretty-print : ils sont volumineux et binaires-lookalike)
-  chunks.forEach((chunk, i) => {
-    const fname = `trombinoscope-images-${String(i + 1).padStart(3, '0')}.json`;
-    result.files[fname] = JSON.stringify({ chunk: i + 1, of: chunks.length, images: chunk });
-    result.totalSize += result.files[fname].length;
-  });
-
-  return result;
-}
-
 export async function importAll(data, { replace = false } = {}) {
+  const incoming = (data.profiles || []).filter((p) => p && p.id);
+  const incomingIds = new Set(incoming.map((p) => p.id));
   if (replace) {
-    const db = await openDB();
-    const t = db.transaction([STORE_PROFILES, STORE_IMAGES], 'readwrite');
-    t.objectStore(STORE_PROFILES).clear();
-    t.objectStore(STORE_IMAGES).clear();
-    await new Promise((r) => (t.oncomplete = r));
+    // « Remplacer » = l'état du fichier devient l'état partagé : les profils
+    // absents du fichier sont supprimés (sur tous les appareils).
+    for (const p of await getAllProfiles()) {
+      if (!incomingIds.has(p.id)) await deleteProfile(p.id);
+    }
   }
-  if (data.profiles?.length) {
-    await bulkSaveProfiles(data.profiles);
+  if (incoming.length) {
+    for (const p of incoming) delete p._f; // les champs importés sont des modifications d'aujourd'hui
+    await bulkSaveProfiles(incoming);
   }
   if (data.images?.length) {
     // On convertit TOUS les blobs AVANT d'ouvrir la transaction : base64ToBlob
     // fait un `await fetch(dataURL)` (frontière de tâche) qui ferait s'auto-
-    // commit une transaction IDB ouverte trop tôt → TransactionInactiveError
-    // dès le 1er put (l'import d'images d'un backup ne marchait jamais).
+    // commit une transaction IDB ouverte trop tôt → TransactionInactiveError.
     const records = [];
     for (const img of data.images) {
+      if (!img?.profileId || !incomingIds.has(img.profileId)) continue;
       try {
         const blob = await base64ToBlob(img.data, img.type);
-        records.push({ key: img.key, profileId: img.profileId, index: img.index, blob, type: img.type, size: blob.size, addedAt: Date.now() });
-      } catch (e) { console.warn('[store] image backup illisible, ignorée:', img.key, e.message); }
+        records.push({ key: `${img.profileId}::${img.index}`, profileId: img.profileId, index: img.index, blob, type: img.type || blob.type, size: blob.size, addedAt: Date.now() });
+      } catch (e) { console.warn('[store] image de sauvegarde illisible, ignorée :', img.key, e.message); }
     }
+    const pids = new Set(records.map((r) => r.profileId));
+    if (replace) for (const pid of pids) await deleteProfileImages(pid);
     if (records.length) {
       const db = await openDB();
       await new Promise((resolve, reject) => {
@@ -450,265 +641,11 @@ export async function importAll(data, { replace = false } = {}) {
         for (const rec of records) store.put(rec);
         t.oncomplete = () => resolve();
         t.onerror = () => reject(t.error);
-        t.onabort = () => reject(t.error || new Error('tx abort'));
+        t.onabort = () => reject(t.error || new Error('transaction annulée'));
       });
+      for (const pid of pids) await noteImagesChange(pid);
     }
   }
-}
-
-/**
- * Import "chunked" : prend un objet { 'trombinoscope.json': string, 'trombinoscope-images-NNN.json': string, ... }
- * et restaure tout. Compatible avec l'ancien format si un seul fichier "trombinoscope.json" est fourni.
- */
-export async function importAllChunked(filesByName, { replace = true, mergeByUpdatedAt = true } = {}) {
-  const manifestStr = filesByName['trombinoscope.json'];
-  if (!manifestStr) throw new Error('trombinoscope.json manquant');
-  const manifest = JSON.parse(manifestStr);
-  let totalProfiles = 0, totalImages = 0;
-  // Stats de convergence : si le local a des données plus récentes ou des
-  // profils que le distant n'a pas, l'appelant DOIT re-pusher (sinon ces
-  // données n'atteindront jamais les autres appareils).
-  const stats = { localNewer: 0, localOnly: 0, remoteApplied: 0, deletedByTombstone: 0 };
-
-  // Mode destructif explicite (import manuel "Remplacer tout") uniquement.
-  if (replace && !mergeByUpdatedAt) {
-    const db = await openDB();
-    const t = db.transaction([STORE_PROFILES, STORE_IMAGES], 'readwrite');
-    t.objectStore(STORE_PROFILES).clear();
-    t.objectStore(STORE_IMAGES).clear();
-    await new Promise((resolve, reject) => {
-      t.oncomplete = () => resolve();
-      t.onerror = () => reject(t.error);
-      t.onabort = () => reject(new Error('Transaction abortée pendant le clear'));
-    });
-  }
-
-  if (mergeByUpdatedAt) {
-    // ===== MERGE PAR PROFIL (last-write-wins sur updatedAt) + TOMBSTONES =====
-    const localProfiles = await getAllProfiles();
-    const localById = new Map(localProfiles.map(p => [p.id, p]));
-    const remoteProfiles = (manifest.profiles || []).filter(p => p && p.id);
-    const remoteById = new Map(remoteProfiles.map(p => [p.id, p]));
-
-    // 1. Fusion des tombstones (union, deletedAt le plus récent par id)
-    const localTombs = await getTombstones();
-    const remoteTombs = Array.isArray(manifest.tombstones) ? manifest.tombstones : [];
-    const tombById = new Map();
-    for (const t of [...localTombs, ...remoteTombs]) {
-      if (!t || !t.id) continue;
-      const prev = tombById.get(t.id);
-      if (!prev || (Date.parse(t.deletedAt) || 0) > (Date.parse(prev.deletedAt) || 0)) {
-        tombById.set(t.id, t);
-      }
-    }
-
-    // 2. Appliquer les tombstones : un profil modifié APRÈS sa suppression
-    //    ailleurs ressuscite (on retire la pierre tombale) ; sinon il meurt
-    //    partout. C'est ce qui fait qu'une suppression sur l'appareil A ne
-    //    revient pas par le push snapshot de l'appareil B.
-    for (const [id, tomb] of [...tombById]) {
-      const ts = Date.parse(tomb.deletedAt) || 0;
-      const local = localById.get(id);
-      const remote = remoteById.get(id);
-      const localTs = local ? (Date.parse(local.updatedAt) || 0) : -1;
-      const remoteTs = remote ? (Date.parse(remote.updatedAt) || 0) : -1;
-      if (localTs > ts || remoteTs > ts) {
-        tombById.delete(id); // résurrection : édition postérieure à la suppression
-        continue;
-      }
-      if (local) {
-        // Suppression directe (ne PAS repasser par deleteProfile, qui
-        // re-tamponnerait le tombstone à maintenant).
-        const store = await tx(STORE_PROFILES, 'readwrite');
-        await reqToPromise(store.delete(id)).catch(() => {});
-        await deleteProfileImages(id).catch(() => {});
-        localById.delete(id);
-        stats.deletedByTombstone++;
-      }
-      // Le cloud contient encore ce profil supprimé → il faut re-pousser pour
-      // l'en retirer (sinon un autre appareil le verrait toujours).
-      if (remote) stats.localNewer++;
-      remoteById.delete(id); // ne pas réimporter un profil supprimé
-    }
-    // #11 : re-lire les tombstones juste avant d'écrire — une suppression
-    // concurrente (addTombstone) survenue PENDANT ce long merge serait sinon
-    // écrasée par cette écriture (le profil ressusciterait au prochain pull).
-    const freshTombs = await getTombstones().catch(() => []);
-    for (const t of freshTombs) {
-      if (!t || !t.id) continue;
-      const prev = tombById.get(t.id);
-      if (!prev || (Date.parse(t.deletedAt) || 0) > (Date.parse(prev.deletedAt) || 0)) tombById.set(t.id, t);
-      // ne pas réimporter un profil fraîchement supprimé pendant ce merge
-      remoteById.delete(t.id);
-      localById.delete(t.id);
-    }
-    await setMeta('tombstones', pruneTombstones([...tombById.values()]));
-
-    // 3. Merge des profils : le updatedAt distant est PRÉSERVÉ tel quel.
-    //    (Surtout pas bulkSaveProfiles ici : il écrase updatedAt avec "now",
-    //    ce qui faisait croire à ce device qu'il avait la version la plus
-    //    récente de TOUT → son push suivant écrasait les modifs des autres.)
-    const toSave = [];
-    for (const [id, remote] of remoteById) {
-      const local = localById.get(id);
-      if (!local) {
-        toSave.push(remote);
-        stats.remoteApplied++;
-      } else {
-        const remoteTs = Date.parse(remote.updatedAt) || 0;
-        const localTs = Date.parse(local.updatedAt) || 0;
-        if (remoteTs > localTs) {
-          toSave.push(remote);
-          stats.remoteApplied++;
-        } else if (localTs > remoteTs) {
-          stats.localNewer++;
-        } else if (JSON.stringify(remote) !== JSON.stringify(local)) {
-          // updatedAt ÉGAUX mais contenus différents (deux édits dans la même
-          // ms, ou updatedAt manquant/invalide → 0 des deux côtés) : sans
-          // départage, chaque appareil gardait sa version À VIE (divergence
-          // silencieuse). On tranche déterministiquement pour le DISTANT →
-          // tous convergent (et localNewer non incrémenté : pas de push inutile).
-          toSave.push(remote);
-          stats.remoteApplied++;
-        }
-      }
-    }
-    // Profils locaux absents du distant (et non tombstonés) = ajouts locaux
-    // pas encore pushés → on les GARDE et on signale qu'un push est requis.
-    for (const [id] of localById) {
-      if (!remoteById.has(id) && !tombById.has(id)) stats.localOnly++;
-    }
-    if (toSave.length) {
-      const db = await openDB();
-      const t = db.transaction(STORE_PROFILES, 'readwrite');
-      const store = t.objectStore(STORE_PROFILES);
-      for (const p of toSave) store.put(p);
-      await new Promise((resolve, reject) => {
-        t.oncomplete = () => resolve();
-        t.onerror = () => reject(t.error);
-        t.onabort = () => reject(t.error || new Error('tx abort'));
-      });
-    }
-    totalProfiles = remoteProfiles.length;
-  } else if (manifest.profiles?.length) {
-    await bulkSaveProfiles(manifest.profiles);
-    totalProfiles = manifest.profiles.length;
-  }
-
-  // VALIDATION IMAGES : on retient les profileId valides du manifest pour
-  // ignorer les images orphelines (chunks corrompus d'un push partiel passé).
-  // Évite la cross-contamination de photos entre profils.
-  const validProfileIds = new Set(
-    (manifest.profiles || []).map(p => p.id).filter(Boolean)
-  );
-  // Aussi accepter les profileId locaux non encore pushés
-  try {
-    const allLocal = await getAllProfiles();
-    for (const p of allLocal) if (p.id) validProfileIds.add(p.id);
-  } catch {}
-
-  // Helper qui save une liste d'images. Robuste aux quotas IndexedDB
-  // (Safari Privée : ~1MB de limite). Sur quota, fallback en mémoire pour
-  // que les photos s'affichent quand même (mais perdues à la fermeture).
-  async function saveImageBatch(rawImgs) {
-    if (!rawImgs.length) return 0;
-    let savedCount = 0;
-    let memoryFallbackCount = 0;
-    let quotaHit = false;
-    let droppedOrphans = 0;
-    // Convertir tous les blobs en parallèle (parsing CPU)
-    const records = await Promise.all(rawImgs.map(async (img) => {
-      try {
-        // ANTI-CONTAMINATION : refuser les images dont le profileId n'est ni
-        // dans le manifest ni dans les profils locaux. Évite les chunks
-        // corrompus d'écrire des photos sur des id orphelins (qui pouvaient
-        // cross-contaminer après merge).
-        if (img.profileId && !validProfileIds.has(img.profileId)) {
-          droppedOrphans++;
-          return null;
-        }
-        // Validation cohérence key === profileId::index
-        if (img.key && img.profileId && img.key !== `${img.profileId}::${img.index}`) {
-          console.warn('[store] image clé incohérente, skip:', img.key);
-          droppedOrphans++;
-          return null;
-        }
-        const blob = await base64ToBlob(img.data, img.type);
-        return { key: img.key, profileId: img.profileId, index: img.index, blob, type: img.type, size: blob.size, addedAt: Date.now() };
-      } catch (e) {
-        console.warn('[store] base64 decode échoué:', img.key, e.message);
-        return null;
-      }
-    }));
-    if (droppedOrphans) console.warn(`[store] ${droppedOrphans} images orphelines/incohérentes ignorées (anti-contamination).`);
-    const validRecords = records.filter(Boolean);
-    if (!validRecords.length) return 0;
-
-    // Save par lots de 5 pour limiter l'impact d'une transaction qui dépasse
-    // le quota (Safari Privée plante TOUTE la transaction sur quota).
-    const BATCH = 5;
-    const db = await openDB();
-    for (let i = 0; i < validRecords.length; i += BATCH) {
-      const slice = validRecords.slice(i, i + BATCH);
-      if (quotaHit) {
-        // Une fois le quota atteint, on stocke uniquement en mémoire
-        // (pas la peine de réessayer chaque batch).
-        for (const rec of slice) setMemoryImage(rec.profileId, rec.index, rec.blob, rec.type);
-        memoryFallbackCount += slice.length;
-        continue;
-      }
-      try {
-        await new Promise((resolve, reject) => {
-          let t;
-          try { t = db.transaction(STORE_IMAGES, 'readwrite'); }
-          catch (e) { return reject(e); }
-          const store = t.objectStore(STORE_IMAGES);
-          try { for (const rec of slice) store.put(rec); }
-          catch (e) { try { t.abort(); } catch {} ; return reject(e); }
-          t.oncomplete = () => resolve();
-          t.onerror = () => reject(t.error);
-          t.onabort = () => reject(t.error || new Error('Transaction abortée'));
-        });
-        savedCount += slice.length;
-      } catch (e) {
-        const isQuota = e?.name === 'QuotaExceededError' || /quota/i.test(e?.message || '');
-        if (isQuota) {
-          console.warn(`[store] Quota IDB atteint après ${savedCount} images. Fallback mémoire.`);
-          quotaHit = true;
-          if (typeof window !== 'undefined') window.__idbQuotaHit = true;
-          // Stocker ce slice + suivants en mémoire
-          for (const rec of slice) setMemoryImage(rec.profileId, rec.index, rec.blob, rec.type);
-          memoryFallbackCount += slice.length;
-        } else {
-          console.warn('[store] saveImageBatch erreur (continue, mémoire):', e.message);
-          for (const rec of slice) setMemoryImage(rec.profileId, rec.index, rec.blob, rec.type);
-          memoryFallbackCount += slice.length;
-        }
-      }
-    }
-    if (memoryFallbackCount > 0) {
-      console.log(`[store] ${memoryFallbackCount} images en mémoire (non persistantes).`);
-    }
-    return savedCount + memoryFallbackCount;
-  }
-
-  // Format legacy : images dans le manifest
-  if (manifest.images?.length) {
-    totalImages += await saveImageBatch(manifest.images);
-  }
-
-  // Format chunked : lire tous les fichiers trombinoscope-images-*.json
-  const chunkFiles = Object.keys(filesByName).filter(n => /^trombinoscope-images-\d+\.json$/.test(n)).sort();
-  for (const fname of chunkFiles) {
-    try {
-      const chunk = JSON.parse(filesByName[fname]);
-      if (chunk.images?.length) {
-        totalImages += await saveImageBatch(chunk.images);
-      }
-    } catch (e) { console.warn(`Chunk ${fname} invalide:`, e.message); }
-  }
-
-  return { profiles: totalProfiles, images: totalImages, ...stats };
 }
 
 // ============= UTILS =============

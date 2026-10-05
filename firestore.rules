@@ -1,0 +1,17 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Chaque espace partagé est identifié par un secret de 64 caractères hex
+    // dérivé du mot de passe d'entrée. Sans lui, rien n'est lisible ni
+    // modifiable ; le document d'espace lui-même n'existe jamais (pas de liste).
+    function inSpace(space) {
+      return request.auth != null && space.matches('^(test-)?[a-f0-9-]{27,64}$');
+    }
+    match /spaces/{space} {
+      allow read, write: if false;
+      match /profiles/{id}  { allow read, write: if inSpace(space); }
+      match /images/{id}    { allow read, write: if inSpace(space); }
+      match /_selftest/{id} { allow read, write: if inSpace(space); }
+    }
+  }
+}

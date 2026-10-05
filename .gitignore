@@ -3,3 +3,5 @@
 node_modules/
 *.log
 .github/workflows/
+# Config Firebase de développement local (émulateur) — jamais versionnée
+js/firebase-config.local.js
