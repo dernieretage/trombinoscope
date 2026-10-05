@@ -45,7 +45,7 @@ export function mergeIncoming(existing, inc) {
   const changed = [];
   const set = (k, v) => { next[k] = v; changed.push(k); };
   const handle = cleanHandle(inc.instagram || existing.instagram);
-  if (!empty(inc.name) && (empty(existing.name) || looksAutoNamed(existing.name, handle))) set('name', inc.name);
+  if (!empty(inc.name) && inc.name !== existing.name && (empty(existing.name) || looksAutoNamed(existing.name, handle))) set('name', inc.name);
   for (const k of ['instagram', 'phone', 'email', 'website', 'location', 'agency', 'rate']) {
     if (!empty(inc[k]) && empty(existing[k])) set(k, k === 'instagram' ? cleanHandle(inc[k]) : inc[k]);
   }
