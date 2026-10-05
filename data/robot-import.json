@@ -1,0 +1,132 @@
+{
+ "version": 1,
+ "source": "Mise à jour 4 — Électricien → Électro",
+ "profiles": [
+  {
+   "name": "Basile Barniske",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Électro"
+    ]
+   }
+  },
+  {
+   "name": "David Jeune",
+   "instagram": "daviduhhh",
+   "replace": {
+    "professions": [
+     "Électro"
+    ]
+   }
+  },
+  {
+   "name": "Eric Courtecuisse",
+   "instagram": "ericcourtecuisse",
+   "replace": {
+    "professions": [
+     "Électro"
+    ]
+   }
+  },
+  {
+   "name": "François Auclair",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Électro"
+    ]
+   }
+  },
+  {
+   "name": "Hugo Mesnil",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Électro"
+    ]
+   }
+  },
+  {
+   "name": "Léo Exbrayat",
+   "instagram": "zbrayat",
+   "replace": {
+    "professions": [
+     "Électro"
+    ]
+   }
+  },
+  {
+   "name": "Lola Protar",
+   "instagram": "lolavpr",
+   "replace": {
+    "professions": [
+     "Électro"
+    ]
+   }
+  },
+  {
+   "name": "Louis Cordier",
+   "instagram": "cor.louis",
+   "replace": {
+    "professions": [
+     "Électro"
+    ]
+   }
+  },
+  {
+   "name": "Manon Bouron",
+   "instagram": "manon.bouron",
+   "replace": {
+    "professions": [
+     "Électro"
+    ]
+   }
+  },
+  {
+   "name": "Romain Carlioz",
+   "instagram": "romaincarlioz",
+   "replace": {
+    "professions": [
+     "Électro"
+    ]
+   }
+  },
+  {
+   "name": "Simon Petillon-Chenitzer",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Électro"
+    ]
+   }
+  },
+  {
+   "name": "Vincent Taberlet",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Électro"
+    ]
+   }
+  },
+  {
+   "name": "William Seris",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Électro"
+    ]
+   }
+  },
+  {
+   "name": "Yvain Li",
+   "instagram": "feiika_",
+   "replace": {
+    "professions": [
+     "Électro"
+    ]
+   }
+  }
+ ]
+}
