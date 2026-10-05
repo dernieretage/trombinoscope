@@ -93,6 +93,12 @@ Pour le robot photos dans le nouveau système : Réglages → **« Copier l'iden
 
 gh-pages : `bddb63e` Robot IG : photos de profil de tous les profils (source embed, sans session).
 
+## 4 bis. Qualité des photos (après-midi du 5 oct.)
+
+- Instagram ne sert en anonyme que des vignettes : 100×100 (page embed) ou **150×150** (point d'accès app avec l'identifiant du compte, identité vérifiée) ; la HD exige un compte connecté (refusé par l'utilisateur, comme tout geste manuel).
+- Réponse en deux temps : **v68** = flou doux automatique sur toute photo affichée nettement plus grande que sa taille réelle (liquid glass, aucun pixel visible) ; **robot** = super-résolution IA ×4 (ESRGAN medium, pur JS, modèle libre) de toute vignette < 400 px au moment de la récupération → 400–600 px nets, sans invention de détails. Testé bout en bout sur l'émulateur.
+- Les 9 profils en vignette sont listés dans `data/robot-force-handles.txt` (gh-pages) : le robot les re-traite au prochain passage (150 px + IA ×4) **dès que le workflow est mis à jour** (SDK Firebase + paquets IA + secret), puis vide la liste.
+
 ## 5. Ce qui n'a pas pu être vérifié / reste ouvert
 
 - **P1** — La v67 n'est testée que contre l'émulateur ; le vrai projet Firebase n'existe pas encore (étapes ci-dessus). Latence réelle et quotas Spark (50 000 lectures/jour, largement suffisant : ~90 lectures par ouverture d'app) à confirmer en conditions réelles.
