@@ -3,7 +3,7 @@ import {
   getAllProfiles, saveProfile, patchProfile, deleteProfile, bulkSaveProfiles,
   saveImage, getProfileImages, deleteImage, deleteProfileImages,
   exportAll, importAll, getMeta, setMeta, estimateUsage, uid,
-  cleanupOrphanImages, clearAllProfilesAndImages, sameValue,
+  cleanupOrphanImages, clearAllProfilesAndImages, clearAllPending, sameValue,
 } from './store.js';
 import { SEED_PROFILES, PROFESSIONS, STATUSES } from './seed.js';
 import {
@@ -1640,7 +1640,7 @@ async function doReset() {
   if (!ok) return;
   // Réinitialisation LOCALE uniquement : on vide le journal d'envoi AVANT de
   // vider les données, pour qu'aucune suppression ne parte vers le serveur.
-  await setMeta('rt_pending', {});
+  await clearAllPending();
   await setMeta(IG_TRIES_KEY, {});
   await clearAllProfilesAndImages();
   STATE.profiles = [];

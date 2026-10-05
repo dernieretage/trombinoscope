@@ -180,6 +180,18 @@ async function pushProfile(id) {
   preparing.add(id);
   await acquirePush();
   try {
+    // Deux onglets du même appareil partagent le journal : un seul envoie à la fois.
+    if (navigator.locks?.request) await navigator.locks.request('rt-push:' + id, () => pushProfileLocked(id));
+    else await pushProfileLocked(id);
+  } finally {
+    releasePush();
+    preparing.delete(id);
+    refreshPendingCount();
+  }
+}
+
+async function pushProfileLocked(id) {
+  try {
     const pend = (await getPending())[id];
     if (!pend) return;
     const local = await getProfile(id);
@@ -236,7 +248,7 @@ async function pushProfile(id) {
         if (!(v && serverImgs[idx] === v)) {
           if (!v) v = newVersion();
           const { data, type } = await imageForUpload(img);
-          await withTimeout(setDoc(imageRef(id, idx, v), { profileId: id, index: img.index, type, data, v }), WRITE_TIMEOUT_MS, 'photo');
+          await withTimeout(setDoc(imageRef(id, idx, v), { profileId: id, index: img.index, type, data, v, at: Date.now() }), WRITE_TIMEOUT_MS, 'photo');
           uploaded.push([idx, v]);
         }
         imgsMap[idx] = v;
@@ -284,19 +296,20 @@ async function pushProfile(id) {
     attempts.delete(id);
   } catch (e) {
     retryLater(id, e);
-  } finally {
-    releasePush();
-    preparing.delete(id);
-    refreshPendingCount();
   }
 }
 
-/** Supprime les documents photos d'un profil qui ne sont plus référencés. */
+/**
+ * Supprime les documents photos d'un profil qui ne sont plus référencés —
+ * sauf les tout récents (envoi en cours depuis un autre onglet/appareil).
+ */
 async function cleanupImageDocs(id, referenced) {
   const snap = await getDocs(query(col('images'), where('profileId', '==', id)));
   for (const d of snap.docs) {
     const x = d.data();
-    if (referenced[String(x.index)] !== x.v) await deleteDoc(d.ref).catch(() => {});
+    if (referenced[String(x.index)] === x.v) continue;
+    if (x.at && Date.now() - x.at < 10 * 60_000) continue;
+    await deleteDoc(d.ref).catch(() => {});
   }
 }
 

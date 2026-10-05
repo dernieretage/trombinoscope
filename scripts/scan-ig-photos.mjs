@@ -94,9 +94,34 @@ function cleanHandle(h) {
 }
 
 // Rejette les images génériques / logos (ne jamais stocker "le gros logo")
+// 44884218_345707102882519… = l'avatar gris « compte sans photo » d'Instagram.
 function isGenericUrl(url) {
   if (!url) return true;
-  return /\/rsrc\.php|static\.cdninstagram\.com\/r[\/.]|instagram\.com\/static\//i.test(url);
+  return /\/rsrc\.php|static\.cdninstagram\.com\/r[\/.]|instagram\.com\/static\/|44884218_345707102882519/i.test(url);
+}
+
+// --- Source 2 : page « embed » du profil (instagram.com/{handle}/embed/) ---
+// Conçue pour être intégrée sur des sites tiers, elle est servie SANS compte
+// et contient profile_pic_url (vignette 100×100 signée). Résolution modeste,
+// mais c'est la seule voie publique encore ouverte en anonyme (oct. 2026).
+async function igEmbedPicUrl(handle) {
+  // UA Safari obligatoire : avec un UA Firefox/Chrome-Android, Instagram sert
+  // la coquille complète du site (sans aucune donnée de profil).
+  const res = await fetchT(`https://www.instagram.com/${encodeURIComponent(handle)}/embed/`, {
+    headers: { 'User-Agent': SESSION_UA, 'Accept': 'text/html,*/*', 'Accept-Language': 'en-US,en;q=0.9' },
+  }, 20000);
+  if (!res.ok) throw new HttpError(res.status, `embed ${res.status}`);
+  const html = await res.text();
+  const m = html.match(/profile_pic_url\\?":\\?"(.*?)\\?"/);
+  if (!m) throw new Error('embed : pas de profile_pic_url (compte privé/inexistant ?)');
+  // La valeur est une chaîne JSON elle-même échappée dans une chaîne JS :
+  // on la décode jusqu'à deux fois (\\/ → /, \\u00253D → %3D, etc.).
+  let url = m[1];
+  for (let i = 0; i < 2 && url.includes('\\'); i++) {
+    try { url = JSON.parse('"' + url + '"'); } catch { break; }
+  }
+  if (!/^https:\/\//.test(url) || url.includes('\\') || isGenericUrl(url)) throw new Error('embed : pas de photo exploitable');
+  return url;
 }
 
 // --- Source 1 : API web publique d'Instagram (meilleure qualité, _hd) ---
@@ -136,21 +161,35 @@ async function igApiPicUrl(handle) {
 // jusqu'à 3 fois avec une attente croissante. `state.consec429` compte les 429
 // consécutifs pour le coupe-circuit de main().
 async function resolvePicUrl(handle, state) {
-  const waits = [10000, 25000]; // attentes (jitterées) avant chaque ré-essai
-  for (let attempt = 0; attempt <= waits.length; attempt++) {
-    try {
-      const url = await igApiPicUrl(handle);
-      state.consec429 = 0;
-      return { url, via: 'api' };
-    } catch (e) {
-      if (e.status === 429) {
-        state.consec429++;
-        if (attempt < waits.length) { await sleep(jitter(waits[attempt])); continue; }
+  const errors = [];
+  // Avec session : l'API d'abord (photo HD). Sans session elle répond 401 :
+  // inutile de la solliciter, on passe directement à la page embed.
+  if (IG_SESSION) {
+    const waits = [10000, 25000]; // attentes (jitterées) avant chaque ré-essai
+    for (let attempt = 0; attempt <= waits.length; attempt++) {
+      try {
+        const url = await igApiPicUrl(handle);
+        state.consec429 = 0;
+        return { url, via: 'api' };
+      } catch (e) {
+        if (e.status === 429) {
+          state.consec429++;
+          if (attempt < waits.length) { await sleep(jitter(waits[attempt])); continue; }
+        }
+        errors.push('api : ' + e.message);
+        break;
       }
-      throw e; // non-429 (privé/introuvable) ou 429 épuisé → on passe au suivant
     }
   }
-  throw new Error('inatteignable'); // jamais atteint
+  try {
+    const url = await igEmbedPicUrl(handle);
+    state.consec429 = 0;
+    return { url, via: 'embed' };
+  } catch (e) {
+    if (e.status === 429) state.consec429++;
+    errors.push(e.message);
+  }
+  throw new Error(errors.join(' · '));
 }
 
 async function downloadAsDataUri(picUrl) {
@@ -159,7 +198,7 @@ async function downloadAsDataUri(picUrl) {
   const ct = res.headers.get('content-type') || 'image/jpeg';
   if (!ct.startsWith('image/')) throw new Error(`pas une image (${ct})`);
   const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length < 2000) throw new Error('image trop petite (placeholder ?)');
+  if (buf.length < 1200) throw new Error('image trop petite (placeholder ?)');
   const type = ct.split(';')[0];
   return { dataUri: `data:${type};base64,${buf.toString('base64')}`, type };
 }
@@ -366,7 +405,7 @@ async function mainSpace(cfg, spaceId) {
       }
       if (dataUri.length > 900_000) throw new Error('photo trop lourde pour un document');
       const v = newVersion();
-      await setDoc(doc(db, 'spaces', spaceId, 'images', `${p.id}::0::${v}`), { profileId: p.id, index: 0, type, data: dataUri, v });
+      await setDoc(doc(db, 'spaces', spaceId, 'images', `${p.id}::0::${v}`), { profileId: p.id, index: 0, type, data: dataUri, v, at: Date.now() });
       const now = Date.now();
       const applied = await runTransaction(db, async (tx) => {
         const ref = doc(db, 'spaces', spaceId, 'profiles', p.id);

@@ -71,42 +71,76 @@ function emitLocalChange(evt) {
   for (const cb of changeListeners) { try { cb(evt); } catch {} }
 }
 
-let pendingCache = null;
+const PENDING_PREFIX = 'rt_pending:';
 let pendingChain = Promise.resolve();
-async function loadPending() {
-  if (!pendingCache) {
-    const v = await getMeta('rt_pending');
-    pendingCache = (v && typeof v === 'object') ? v : {};
-  }
-  return pendingCache;
+let legacyPendingMigrated = false;
+
+// Une entrée de journal = un enregistrement meta par profil ('rt_pending:{id}').
+// Un enregistrement par profil (et non une liste unique) : deux onglets du même
+// appareil ne peuvent pas s'écraser mutuellement le journal.
+async function migrateLegacyPending() {
+  if (legacyPendingMigrated) return;
+  legacyPendingMigrated = true;
+  try {
+    const old = await getMeta('rt_pending');
+    if (old && typeof old === 'object') {
+      for (const [id, v] of Object.entries(old)) if (v && v.at) await setMeta(PENDING_PREFIX + id, v);
+      await setMeta('rt_pending', null);
+    }
+  } catch {}
 }
 
 /** Consigne une modification locale de profil à envoyer ('upsert' | 'delete'). */
 export function markPending(id, op = 'upsert') {
   if (!id) return pendingChain;
   pendingChain = pendingChain.then(async () => {
-    const p = await loadPending();
-    p[id] = { op, at: Date.now() };
-    await setMeta('rt_pending', p);
+    await migrateLegacyPending();
+    await setMeta(PENDING_PREFIX + id, { op, at: Date.now() });
   }).catch(() => {});
   return pendingChain;
 }
 
 export async function getPending() {
   await pendingChain;
-  return { ...(await loadPending()) };
+  await migrateLegacyPending();
+  const store = await tx(STORE_META);
+  const range = IDBKeyRange.bound(PENDING_PREFIX, PENDING_PREFIX + '\uffff');
+  const out = {};
+  await new Promise((resolve) => {
+    const req = store.openCursor(range);
+    req.onsuccess = () => {
+      const c = req.result;
+      if (c) { if (c.value?.value?.at) out[String(c.key).slice(PENDING_PREFIX.length)] = c.value.value; c.continue(); }
+      else resolve();
+    };
+    req.onerror = () => resolve();
+  });
+  return out;
 }
 
 /** Retire une entrée, sauf si une modification plus récente est arrivée entre-temps. */
 export function clearPending(id, at) {
   pendingChain = pendingChain.then(async () => {
-    const p = await loadPending();
-    if (p[id] && (at === undefined || p[id].at <= at)) {
-      delete p[id];
-      await setMeta('rt_pending', p);
+    const cur = await getMeta(PENDING_PREFIX + id);
+    if (cur && (at === undefined || cur.at <= at)) {
+      const store = await tx(STORE_META, 'readwrite');
+      await reqToPromise(store.delete(PENDING_PREFIX + id));
     }
   }).catch(() => {});
   return pendingChain;
+}
+
+/** Vide tout le journal (réinitialisation locale de l'appareil). */
+export async function clearAllPending() {
+  await pendingChain;
+  const store = await tx(STORE_META, 'readwrite');
+  const range = IDBKeyRange.bound(PENDING_PREFIX, PENDING_PREFIX + '\uffff');
+  await new Promise((resolve) => {
+    const req = store.openCursor(range);
+    req.onsuccess = () => { const c = req.result; if (c) { c.delete(); c.continue(); } else resolve(); };
+    req.onerror = () => resolve();
+  });
+  await setMeta('rt_pending', null);
 }
 
 function noteLocalChange(id, op = 'upsert') {
