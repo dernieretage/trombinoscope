@@ -192,7 +192,7 @@ export function renderRow(profile, { firstImage, query, index = 0 } = {}) {
 // PROFILE DETAIL DIALOG
 // =================================================================
 
-export function renderProfileDetail(container, profile, images, { onEdit, onDelete, onClose, onPrev, onNext, onStatusChange, onNotesChange, onProjectsChange, onUploadImages, onDeleteImage, onFetchIg, onAiScan } = {}) {
+export function renderProfileDetail(container, profile, images, { onEdit, onDelete, onClose, onPrev, onNext, onStatusChange, onNotesChange, onProjectsChange, onUploadImages, onDeleteImage, onFetchIg, onAiScan, onProfession } = {}) {
   // Replace innerHTML with a fresh root to clear any prior delegated listener
   container.innerHTML = '';
   // remove any previous listener by creating a fresh delegated handler each time
@@ -290,8 +290,13 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
   const sub = document.createElement('div');
   sub.className = 'profile__sub';
   for (const pro of professionsOf(profile)) {
-    const pTag = document.createElement('span');
-    pTag.className = 'tag';
+    // Cliquable : affiche tout le monde qui a ce métier (filtre de la grille).
+    const pTag = document.createElement('button');
+    pTag.type = 'button';
+    pTag.className = 'tag tag--link';
+    pTag.dataset.act = 'profession';
+    pTag.dataset.profession = pro;
+    pTag.title = `Voir tous les profils « ${pro} »`;
     pTag.textContent = pro;
     sub.appendChild(pTag);
   }
@@ -542,6 +547,7 @@ export function renderProfileDetail(container, profile, images, { onEdit, onDele
     else if (act === 'next') onNext?.();
     else if (act === 'fetch-ig') onFetchIg?.();
     else if (act === 'ai-scan') onAiScan?.();
+    else if (act === 'profession') onProfession?.(e.target.closest('[data-act]').dataset.profession);
   };
   container.__delHandler = handler;
   container.addEventListener('click', handler);
