@@ -15,7 +15,7 @@ import {
   renderCard, renderRow, renderProfileDetail, applyAvatar,
   toast, confirmDialog,
 } from './ui.js';
-import { fetchInstagramProfile, fetchInstagramProfilePicOnly, fetchImageAsBlob, isMicrolinkRateLimited, resetMicrolinkRateLimit } from './ig.js';
+import { fetchInstagramProfilePic, resetMicrolinkRateLimit } from './ig.js';
 import { ensureAuthGate, getSpaceId, migrateLegacyUnlock, lock as lockDevice } from './auth.js';
 import {
   getAiKey, setAiKey, getAiModel, setAiModel,
@@ -101,8 +101,8 @@ const STATE = {
 
   // File de scan photos IG : reprise auto au boot puis toutes les 10 min
   // (couvre le retour de quota des services de récupération).
-  setTimeout(() => processIgQueue().catch(() => {}), 12_000);
-  setInterval(() => processIgQueue().catch(() => {}), 10 * 60_000);
+  setTimeout(() => processIgPics().catch(() => {}), 12_000);
+  setInterval(() => processIgPics().catch(() => {}), 10 * 60_000);
 
   // Synchronisation temps réel (porte mot de passe si l'appareil est nouveau).
   updateSyncUi();
@@ -436,8 +436,7 @@ function hookUI() {
     if (a === 'export-csv') return doExportCsv();
     if (a === 'import') return triggerImport();
     if (a === 'bulk-import') return openBulkDialog();
-    if (a === 'bulk-ig-photos') return bulkImportInstagramPhotos();
-    if (a === 'bulk-ig-fast') return bulkImportProfilePicsOnly();
+    if (a === 'bulk-ig-photos' || a === 'bulk-ig-fast') return fetchMissingProfilePics({ manual: true });
     if (a === 'copy-emails') return copyEmailsOfFiltered();
     if (a === 'copy-handles') return copyHandlesOfFiltered();
     if (a === 'seed') return doReSeed();
@@ -585,18 +584,18 @@ function hookUI() {
     finally { btn.classList.remove('is-spinning'); }
   });
 
-  // bouton "Scanner photos IG" — cloud d'abord (robot back-office), puis scan
-  // client pour ce qui manque encore. JAMAIS muet, JAMAIS désactivé.
+  // bouton « Photos Instagram » — relit l'espace partagé (le robot y dépose
+  // les photos) puis tente depuis cet appareil ce qui manque encore.
   const igBulkBtn = $('#ig-bulk-btn');
   igBulkBtn.addEventListener('click', () => onIgBulkClick());
-  // Mettre à jour le badge avec le nombre de profils sans images
+  // Mettre à jour le badge avec le nombre de profils sans photo
   const updateIgBulkCount = () => {
-    const without = STATE.profiles.filter(p => p.instagram && !STATE.imagesByProfile.get(p.id)?.length).length;
+    const without = profilesWithoutPic().length;
     const countEl = $('#ig-bulk-count');
     if (countEl) countEl.textContent = without > 0 ? String(without) : '';
     igBulkBtn.title = without === 0
-      ? 'Toutes les photos sont là — clic pour vérifier le cloud quand même.'
-      : `${without} profil${without > 1 ? 's' : ''} Instagram sans image — clic pour récupérer (cloud, puis Instagram)`;
+      ? 'Tous les profils Instagram ont leur photo — clic pour vérifier quand même.'
+      : `${without} profil${without > 1 ? 's' : ''} Instagram sans photo — clic pour les récupérer`;
   };
   // exposer pour appel après sync/import
   window.__updateIgBulkCount = updateIgBulkCount;
@@ -824,7 +823,7 @@ async function openProfileDialog(id) {
       render();
     },
     onFetchIg: async () => {
-      await importInstagramForProfile(profile);
+      await refetchProfilePic(profile);
     },
     onAiScan: async () => {
       await aiScanProfile(profile);
@@ -1055,13 +1054,13 @@ function hookEditForm() {
     // Handle CORRIGÉ sur un profil existant (cas « mauvais insta ») → on purge
     // les anciennes photos (celles du mauvais compte) et on re-scanne.
     if (!existing && profile.instagram) {
-      enqueueIgScan(profile.id);
+      requestIgPic(profile.id);
     } else if (existing && profile.instagram && profile.instagram !== oldHandle) {
       await deleteProfileImages(profile.id);
       STATE.imagesByProfile.delete(profile.id);
       render();
-      enqueueIgScan(profile.id);
-      toast(`Handle corrigé → anciennes photos (mauvais compte) retirées. La vraie photo arrive via le robot — ou glisse-la sur la fiche.`, { type: 'info', timeout: 6000 });
+      requestIgPic(profile.id);
+      toast(`Handle corrigé → anciennes photos (mauvais compte) retirées ; la photo du bon compte est recherchée.`, { type: 'info', timeout: 6000 });
     }
     } finally {
       btn.dataset.busy = '';
@@ -1083,371 +1082,153 @@ function hookEditForm() {
   }
 }
 
-async function importInstagramProfilePicOnly(profile, { silent = false } = {}) {
-  if (!profile.instagram) return { added: 0, errors: ['No handle'] };
-  try {
-    const result = await fetchInstagramProfilePicOnly(profile.instagram);
-    if (!result.profilePic?.url) {
-      return { added: 0, errors: result.errors };
-    }
-    let blob;
-    try {
-      const raw = await fetchImageAsBlob(result.profilePic.url);
-      if (raw.size < 2000) throw new Error('image trop petite (< 2KB)');
-      blob = await downscaleImage(raw, { maxDim: 1080, quality: 0.82 }).catch(() => raw);
-    } catch (e) {
-      return { added: 0, errors: ['blob: ' + e.message] };
-    }
-    await deleteProfileImages(profile.id);
-    await saveImage(profile.id, 0, blob);
-    if (result.bio && !profile.bio) applySaved(await patchProfile(profile.id, { bio: result.bio }));
-    const imgs = await getProfileImages(profile.id);
-    STATE.imagesByProfile.set(profile.id, imgs);
-    return { added: 1, errors: [] };
-  } catch (e) {
-    return { added: 0, errors: [e.message] };
-  }
+// ============= PHOTO DE PROFIL INSTAGRAM (automatique) =============
+// Objectif : toute fiche avec un handle Instagram est illustrée par la photo
+// de profil de ce compte, sans rien faire. Règle simple et partagée : « un
+// profil avec handle et sans photo » = à récupérer. Chaque appareil essaie
+// avec sa propre IP (relais publics à quota journalier), le robot cloud
+// (session Instagram) complète ; la photo obtenue se synchronise partout, et
+// les autres appareils arrêtent d'essayer puisqu'elle est là.
+const IG_TRIES_KEY = 'ig_pic_tries';   // par appareil : { profileId: { n, nextAt } }
+const IG_PAUSE_KEY = 'ig_pic_pause_until';
+let igRunning = false;
+
+function profilesWithoutPic() {
+  return STATE.profiles.filter(p => p.instagram && !STATE.imagesByProfile.get(p.id)?.length);
 }
 
-let bulkFastRunning = false;
-async function bulkImportProfilePicsOnly({ skipConfirm = false } = {}) {
-  if (bulkFastRunning) {
-    toast('Un bulk est déjà en cours.', { type: 'warn' });
-    return;
-  }
-  const targets = STATE.profiles.filter(p => p.instagram && !STATE.imagesByProfile.get(p.id)?.length);
-  if (!targets.length) {
-    toast('Tous les profils Instagram ont déjà au moins une image.', { type: 'ok' });
-    return;
-  }
-  if (!skipConfirm) {
-    const ok = await confirmDialog({
-      title: `Mode rapide : photo de profil seule pour ${targets.length} profils ?`,
-      text: `Ce mode utilise UNIQUEMENT Dumpor (pas de Microlink, pas de rate limit). ` +
-            `Vous obtiendrez la photo de profil et la bio de chaque profil. ` +
-            `Pour avoir aussi les 9 derniers posts, utilisez "Scanner photos IG" plus tard ` +
-            `(quand votre quota Microlink sera reset).`,
-      okLabel: 'Lancer',
-      danger: false,
-    });
-    if (!ok) return;
-  }
-  bulkFastRunning = true;
-  $('#ig-bulk-btn')?.classList.add('is-running');
-  const persist = toast(`Mode rapide : 0 / ${targets.length}…`, { type: 'info', timeout: 0 });
-  let done = 0, success = 0;
-  for (const p of targets) {
-    const card = document.querySelector(`.card[data-id="${p.id}"]`);
-    card?.classList.add('is-importing');
-    try {
-      const r = await importInstagramProfilePicOnly(p, { silent: true });
-      if (r.added > 0) success++;
-    } catch (e) { /* continue */ }
-    card?.classList.remove('is-importing');
-    done++;
-    persist.dismiss();
-    const t = toast(`Mode rapide : ${done} / ${targets.length} (${success} OK)`, { type: 'info', timeout: 0 });
-    persist.dismiss = t.dismiss;
-    render();
-    await new Promise(r => setTimeout(r, 350)); // throttle léger
-  }
-  persist.dismiss();
-  bulkFastRunning = false;
-  $('#ig-bulk-btn')?.classList.remove('is-running');
-  window.__updateIgBulkCount?.();
-  render();
-  toast(`Mode rapide terminé : ${success}/${targets.length} photos de profil ajoutées.`, { type: 'ok', timeout: 8000 });
-  return { success, totalTargets: targets.length };
+/** Récupère et enregistre la photo de profil d'une fiche. */
+async function fetchProfilePicFor(profile) {
+  const { blob: raw, source } = await fetchInstagramProfilePic(profile.instagram);
+  const blob = await downscaleImage(raw, { maxDim: 1080, quality: 0.82 }).catch(() => raw);
+  await deleteProfileImages(profile.id);
+  await saveImage(profile.id, 0, blob);
+  STATE.imagesByProfile.set(profile.id, await getProfileImages(profile.id));
+  return source;
 }
 
-if (typeof window !== 'undefined') {
-  window.__bulkProfilePicsOnly = bulkImportProfilePicsOnly;
-}
-
-// Clic sur « Scanner photos IG » : 1) on récupère d'abord le CLOUD (le robot
-// back-office y dépose les photos — source la plus fiable, Instagram bloque
-// souvent les fetchs côté navigateur), 2) s'il manque encore des photos, on
-// lance le scan Instagram client. Toujours un retour visible à l'écran.
-async function onIgBulkClick() {
-  const countMissing = () =>
-    STATE.profiles.filter(p => p.instagram && !STATE.imagesByProfile.get(p.id)?.length).length;
-  const before = countMissing();
-  const t = toast('Vérification des photos sur l\'espace partagé…', { type: 'info', timeout: 0 });
-  await resyncAndRefresh({ quiet: true });
-  t.dismiss();
-  const after = countMissing();
-  const gained = before - after;
-  if (after === 0) {
-    toast(gained > 0
-      ? `✓ ${gained} photo${gained > 1 ? 's' : ''} récupérée${gained > 1 ? 's' : ''} du cloud — tous les profils ont leur photo.`
-      : '✓ Tous les profils ont déjà leur photo (cloud vérifié à l\'instant).',
-      { type: 'ok', timeout: 5000 });
-    window.__updateIgBulkCount?.();
-    return;
-  }
-  if (gained > 0) {
-    toast(`${gained} photo${gained > 1 ? 's' : ''} récupérée${gained > 1 ? 's' : ''} du cloud — ${after} restante${after > 1 ? 's' : ''}, scan Instagram…`, { type: 'info', timeout: 4000 });
-  }
-  await bulkImportProfilePicsOnly();
-}
-
-async function importInstagramForProfile(profile, { silent = false } = {}) {
-  if (!profile.instagram) {
-    if (!silent) toast('Ce profil n’a pas de handle Instagram.', { type: 'warn' });
-    return { added: 0, errors: ['No handle'] };
-  }
-  let progressToast = null;
-  if (!silent) {
-    progressToast = toast(`@${profile.instagram} : démarrage…`, { type: 'info', timeout: 0 });
-  }
-  try {
-    let added = 0;
-    const result = await fetchInstagramProfile(profile.instagram, {
-      onProgress: ({ message }) => {
-        if (progressToast && message) {
-          progressToast.dismiss();
-          progressToast = toast(`@${profile.instagram} : ${message}`, { type: 'info', timeout: 0 });
-        }
-      },
-    });
-
-    // Téléchargement + compression des blobs (profile pic en premier si dispo, puis posts)
-    const newImgsToInsert = [];
-    async function downloadAndCompress(url) {
-      const raw = await fetchImageAsBlob(url);
-      // Filtre robuste : rejeter blobs trop petits (probablement un logo ou icône générique)
-      if (raw.size < 12000) throw new Error('Image trop petite (probable logo/placeholder)');
-      // Compresser à 1080px max pour économiser le stockage IndexedDB
-      try {
-        return await downscaleImage(raw, { maxDim: 1080, quality: 0.82 });
-      } catch { return raw; }
-    }
-    if (result.profilePic?.url) {
-      try {
-        const blob = await downloadAndCompress(result.profilePic.url);
-        newImgsToInsert.push(blob);
-      } catch (e) { result.errors.push('blob profile-pic : ' + e.message); }
-    }
-    for (const post of result.posts) {
-      try {
-        const blob = await downloadAndCompress(post.url);
-        newImgsToInsert.push(blob);
-      } catch (e) { /* skip */ }
-    }
-
-    if (newImgsToInsert.length) {
-      // Remplacer toutes les images existantes (on est en mode "import")
-      await deleteProfileImages(profile.id);
-      for (let i = 0; i < newImgsToInsert.length; i++) {
-        await saveImage(profile.id, i, newImgsToInsert[i]);
-        added++;
-      }
-    } else {
-      result.errors.push('aucune image téléchargée');
-    }
-
-    progressToast?.dismiss();
-    const imgs = await getProfileImages(profile.id);
-    STATE.imagesByProfile.set(profile.id, imgs);
-
-    if (added) {
-      if (result.bio && !profile.bio) applySaved(await patchProfile(profile.id, { bio: result.bio }));
-      if (!silent) {
-        if ($('#profile-dialog').open && STATE.current?.id === profile.id) openProfileDialog(profile.id);
-        render();
-        const errMsg = result.errors.length ? ` (${result.errors.length} avertissement${result.errors.length > 1 ? 's' : ''})` : '';
-        toast(`@${profile.instagram} : ${added} image${added > 1 ? 's' : ''} importée${added > 1 ? 's' : ''}${errMsg}.`, { type: 'ok', timeout: 5000 });
-      }
-    } else if (!silent) {
-      toast(`@${profile.instagram} : aucune image récupérée — les sources publiques Instagram sont quasi toutes fermées depuis fin 2026. Le robot (qui tourne sur le Mac du bureau) la récupérera, ou glisse une photo directement sur la fiche.`, { type: 'warn', timeout: 9000 });
-    }
-    return { added, errors: result.errors };
-  } catch (e) {
-    progressToast?.dismiss();
-    if (!silent) toast(`@${profile.instagram} : ${e.message}`, { type: 'err' });
-    return { added: 0, errors: [e.message] };
-  }
-}
-
-let bulkRunning = false;
-async function bulkImportInstagramPhotos({ skipConfirm = false } = {}) {
-  if (bulkRunning) {
-    toast('Un bulk est déjà en cours.', { type: 'warn' });
-    return;
-  }
-  // Profils avec handle IG mais sans image
-  const targets = STATE.profiles.filter(p => p.instagram && !STATE.imagesByProfile.get(p.id)?.length);
-  if (!targets.length) {
-    toast('Tous les profils Instagram ont déjà au moins une image. Rien à faire.', { type: 'ok' });
-    return;
-  }
-
-  if (!skipConfirm) {
-    const ok = await confirmDialog({
-      title: `Importer les photos Instagram pour ${targets.length} profil${targets.length > 1 ? 's' : ''} ?`,
-      text: `Cela prend environ 5 à 10 secondes par profil (~${Math.ceil(targets.length * 7 / 60)} minutes au total). ` +
-            `Vous pouvez continuer à utiliser l'app. Si Microlink atteint son quota gratuit (50 req/jour), ` +
-            `relancez plus tard.`,
-      okLabel: 'Lancer',
-      danger: false,
-    });
-    if (!ok) return;
-  }
-
-  bulkRunning = true;
-  $('#ig-bulk-btn')?.classList.add('is-running');
-
-  const persist = toast(`Bulk IG : 0 / ${targets.length}…`, { type: 'info', timeout: 0 });
-  let done = 0, success = 0, totalImages = 0;
-
-  let rateLimitHit = false;
-  for (const p of targets) {
-    if (rateLimitHit) break;
-    const card = document.querySelector(`.card[data-id="${p.id}"]`);
-    card?.classList.add('is-importing');
-    try {
-      const r = await importInstagramForProfile(p, { silent: true });
-      if (r.added > 0) {
-        success++;
-        totalImages += r.added;
-      }
-      // Vérifier si on a hit le rate limit pendant ce profil
-      if (isMicrolinkRateLimited()) {
-        rateLimitHit = true;
-      }
-    } catch (e) {
-      if (e.message === 'MICROLINK_RATE_LIMITED' || isMicrolinkRateLimited()) {
-        rateLimitHit = true;
-      }
-    }
-    card?.classList.remove('is-importing');
-    done++;
-    persist.dismiss();
-    const t = toast(`Bulk IG : ${done} / ${targets.length} (${success} OK, ${totalImages} images)`, { type: 'info', timeout: 0 });
-    persist.dismiss = t.dismiss;
-    render();
-    if (rateLimitHit) break;
-    // throttle pour éviter rate-limiting
-    await new Promise(r => setTimeout(r, 800));
-  }
-
-  persist.dismiss();
-  render();
-  bulkRunning = false;
-  $('#ig-bulk-btn')?.classList.remove('is-running');
-  window.__updateIgBulkCount?.();
-  if (rateLimitHit) {
-    toast(`Bulk arrêté : Microlink rate-limit atteint (50 req/jour anonyme). ` +
-          `${success} profil${success > 1 ? 's' : ''} ajouté${success > 1 ? 's' : ''} (${totalImages} images). ` +
-          `Réessayez demain ou ajoutez une clé API Microlink dans Réglages.`, {
-      type: 'warn', timeout: 12000,
-      action: { label: 'Réglages', onClick: () => openSettingsDialog() },
-    });
-  } else {
-    toast(`Bulk IG terminé : ${success}/${targets.length} profils enrichis, ${totalImages} images au total.`, { type: 'ok', timeout: 8000 });
-  }
-  return { success, totalImages, totalTargets: targets.length, rateLimitHit };
-}
-
-// Exposer pour tests externes / pilotage
-if (typeof window !== 'undefined') {
-  window.__bulkImportIG = bulkImportInstagramPhotos;
-  window.__getBulkProgress = () => ({
-    running: bulkRunning,
-    withImages: STATE.profiles.filter(p => STATE.imagesByProfile.get(p.id)?.length).length,
-    total: STATE.profiles.length,
-    withoutImages: STATE.profiles.filter(p => p.instagram && !STATE.imagesByProfile.get(p.id)?.length).length,
-  });
-}
-
-// ============= FILE DE SCAN PHOTOS INSTAGRAM =============
-// Objectif : toute fiche ajoutée avec un handle IG reçoit sa photo (et ses
-// posts) AUTOMATIQUEMENT, le plus vite possible. Si le quota Microlink est
-// épuisé (50 req/jour en anonyme), la file persiste et REPREND TOUTE SEULE
-// (pas d'action utilisateur : « les crédits se renouvellent » = on réessaie
-// après la fenêtre de blocage, et chaque jour le quota repart).
-const IG_QUEUE_KEY = 'ig_scan_queue';
-const IG_BLOCK_KEY = 'ig_quota_block_until';
-let igQueueRunning = false;
-
-async function enqueueIgScan(profileId) {
-  try {
-    const q = (await getMeta(IG_QUEUE_KEY)) || [];
-    if (!q.some(it => it.id === profileId)) {
-      q.push({ id: profileId, attempts: 0, nextAt: 0 });
-      await setMeta(IG_QUEUE_KEY, q);
-    }
-    processIgQueue().catch(() => {});
-  } catch {}
+/** Un nouveau profil (ou un handle corrigé) : on tente tout de suite. */
+function requestIgPic(profileId) {
+  getMeta(IG_TRIES_KEY).then(async (tries) => {
+    const t = tries || {};
+    delete t[profileId];
+    await setMeta(IG_TRIES_KEY, t);
+    processIgPics().catch(() => {});
+  }).catch(() => {});
 }
 
 async function igQueueCount() {
-  try { return ((await getMeta(IG_QUEUE_KEY)) || []).length; } catch { return 0; }
+  return profilesWithoutPic().length;
 }
 
-async function processIgQueue() {
-  if (igQueueRunning) return;
-  igQueueRunning = true;
+/**
+ * Passe sur les profils sans photo (les plus récents d'abord), dans la limite
+ * des quotas. Rejoué au démarrage, toutes les 10 min, et à chaque création.
+ */
+async function processIgPics({ manual = false, onProgress } = {}) {
+  if (igRunning) return { skipped: true };
+  igRunning = true;
+  const result = { done: 0, ok: 0, rateLimited: false, errors: [] };
   try {
-    for (let guard = 0; guard < 50; guard++) {
-      const now = Date.now();
-      const blockUntil = (await getMeta(IG_BLOCK_KEY)) || 0;
-      let q = (await getMeta(IG_QUEUE_KEY)) || [];
-      if (!q.length) break;
-      const idx = q.findIndex(it => (it.nextAt || 0) <= now);
-      if (idx === -1) break; // tout est en backoff → les relances périodiques s'en chargent
-      const item = q[idx];
-      const profile = STATE.profiles.find(p => p.id === item.id);
-      if (!profile || !profile.instagram) {
-        q.splice(idx, 1); await setMeta(IG_QUEUE_KEY, q); continue;
-      }
-      const quotaBlocked = now < blockUntil || isMicrolinkRateLimited();
-      let res;
+    const now = Date.now();
+    if (!manual && now < ((await getMeta(IG_PAUSE_KEY)) || 0)) return result;
+    const tries = (await getMeta(IG_TRIES_KEY)) || {};
+    const targets = profilesWithoutPic()
+      .filter(p => manual || !tries[p.id] || (tries[p.id].nextAt || 0) <= now)
+      .sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0))
+      .slice(0, manual ? 200 : 12);
+    for (const p of targets) {
+      if (!STATE.profiles.includes(p) || STATE.imagesByProfile.get(p.id)?.length) continue; // arrivée entre-temps (autre appareil / robot)
+      const card = document.querySelector(`.card[data-id="${p.id}"]`);
+      card?.classList.add('is-importing');
       try {
-        // Quota dispo → scan complet (photo + posts). Quota bloqué → au moins
-        // la photo de profil (voie sans quota), et le complet repassera après.
-        res = quotaBlocked
-          ? await importInstagramProfilePicOnly(profile, { silent: true })
-          : await importInstagramForProfile(profile, { silent: true });
-      } catch (e) { res = { added: 0, errors: [e.message] }; }
-
-      q = (await getMeta(IG_QUEUE_KEY)) || [];
-      const j = q.findIndex(it => it.id === item.id);
-      const rateLimited = isMicrolinkRateLimited() || (res.errors || []).some(e => /RATE_LIMITED/.test(String(e)));
-      if (rateLimited) {
-        const prevBlock = (await getMeta(IG_BLOCK_KEY)) || 0;
-        const newBlock = Date.now() + 3 * 3600 * 1000;
-        await setMeta(IG_BLOCK_KEY, newBlock);
-        if (prevBlock < Date.now()) {
-          toast('Quota photos Instagram atteint — la récupération REPREND AUTOMATIQUEMENT dans quelques heures. (Astuce : une clé Microlink gratuite dans Réglages augmente le quota.)', { type: 'warn', timeout: 8000 });
+        await fetchProfilePicFor(p);
+        delete tries[p.id];
+        result.ok++;
+        render();
+      } catch (e) {
+        if (e?.code === 'RATE_LIMITED') {
+          result.rateLimited = true;
+          await setMeta(IG_PAUSE_KEY, Date.now() + 3 * 3600 * 1000);
+          card?.classList.remove('is-importing');
+          break;
         }
-        if (j >= 0) {
-          // la photo de profil a pu passer (voie sans quota) : on garde en file
-          // pour compléter les posts quand le quota revient.
-          q[j].nextAt = newBlock;
-          if (res.added > 0) q[j].picDone = true;
-        }
-      } else if (res.added > 0 && !quotaBlocked) {
-        if (j >= 0) q.splice(j, 1); // scan complet réussi → terminé
-      } else if (res.added > 0 && quotaBlocked) {
-        // photo OK, posts plus tard (fenêtre sûre même si le blocage vient du
-        // flag runtime et que IG_BLOCK_KEY n'était pas encore posé)
-        if (j >= 0) { q[j].picDone = true; q[j].nextAt = Math.max(blockUntil, Date.now() + 3 * 3600 * 1000); }
-      } else {
-        if (j >= 0) {
-          q[j].attempts = (q[j].attempts || 0) + 1;
-          if (q[j].attempts >= 6) q.splice(j, 1); // handle probablement invalide
-          else q[j].nextAt = Date.now() + Math.min(6, q[j].attempts) * 30 * 60 * 1000;
-        }
+        const n = ((tries[p.id] && tries[p.id].n) || 0) + 1;
+        // Compte privé, inexistant ou relais capricieux : on réessaie de moins
+        // en moins souvent (30 min → 24 h), sans jamais abandonner tout à fait.
+        tries[p.id] = { n, nextAt: Date.now() + Math.min(24 * 3600, 1800 * 2 ** Math.min(n, 6)) * 1000 };
+        result.errors.push(`@${p.instagram} : ${e.message}`);
+      } finally {
+        card?.classList.remove('is-importing');
       }
-      await setMeta(IG_QUEUE_KEY, q);
-      window.__updateIgBulkCount?.();
-      await new Promise(r => setTimeout(r, 600)); // throttle doux
+      result.done++;
+      onProgress?.(result, targets.length);
+      await new Promise(r => setTimeout(r, 400));
     }
-    render();
+    await setMeta(IG_TRIES_KEY, tries);
+    window.__updateIgBulkCount?.();
   } finally {
-    igQueueRunning = false;
+    igRunning = false;
   }
+  return result;
+}
+
+/** Bouton / menu : relit l'espace partagé puis tente ce qui manque, avec retour visible. */
+async function fetchMissingProfilePics({ manual = true } = {}) {
+  const before = profilesWithoutPic().length;
+  const t = toast('Vérification des photos sur l\'espace partagé…', { type: 'info', timeout: 0 });
+  await resyncAndRefresh({ quiet: true });
+  t.dismiss();
+  const missing = profilesWithoutPic().length;
+  if (missing === 0) {
+    toast(before > missing ? `✓ ${before - missing} photo(s) récupérée(s) de l\'espace partagé — tous les profils ont leur photo.` : '✓ Tous les profils Instagram ont déjà leur photo.', { type: 'ok', timeout: 5000 });
+    return;
+  }
+  if (igRunning) { toast('Récupération déjà en cours…', { type: 'info' }); return; }
+  $('#ig-bulk-btn')?.classList.add('is-running');
+  let progress = toast(`Photos Instagram : 0 / ${missing}…`, { type: 'info', timeout: 0 });
+  const r = await processIgPics({
+    manual,
+    onProgress: (res, total) => { progress.dismiss(); progress = toast(`Photos Instagram : ${res.done} / ${total} (${res.ok} trouvée${res.ok > 1 ? 's' : ''})`, { type: 'info', timeout: 0 }); },
+  });
+  progress.dismiss();
+  $('#ig-bulk-btn')?.classList.remove('is-running');
+  render();
+  if (r.rateLimited) {
+    toast(`Quota des relais Instagram atteint pour aujourd\'hui depuis cet appareil (${r.ok} photo${r.ok > 1 ? 's' : ''} récupérée${r.ok > 1 ? 's' : ''}). Reprise automatique plus tard ; le robot cloud complète aussi. Astuce : une clé Microlink gratuite dans Réglages augmente le quota.`, { type: 'warn', timeout: 10000, action: { label: 'Réglages', onClick: () => openSettingsDialog() } });
+  } else if (r.ok) {
+    toast(`✓ ${r.ok} photo${r.ok > 1 ? 's' : ''} de profil récupérée${r.ok > 1 ? 's' : ''}${r.errors.length ? ` — ${r.errors.length} compte(s) introuvable(s) ou privé(s)` : ''}.`, { type: 'ok', timeout: 7000 });
+  } else {
+    toast(`Aucune photo trouvée (${r.errors.length} compte(s) privés, introuvables ou relais indisponibles). Le robot cloud réessaie toutes les 3 h.`, { type: 'warn', timeout: 8000 });
+    if (r.errors.length) console.log('[IG]', r.errors);
+  }
+}
+
+async function onIgBulkClick() { return fetchMissingProfilePics({ manual: true }); }
+
+/** Fiche ouverte → « Re-scanner Instagram » : remplace la photo par celle du handle actuel. */
+async function refetchProfilePic(profile) {
+  if (!profile.instagram) { toast('Ce profil n\'a pas de handle Instagram.', { type: 'warn' }); return; }
+  const t = toast(`@${profile.instagram} : recherche de la photo de profil…`, { type: 'info', timeout: 0 });
+  try {
+    const source = await fetchProfilePicFor(profile);
+    t.dismiss();
+    if ($('#profile-dialog').open && STATE.current?.id === profile.id) openProfileDialog(profile.id);
+    render();
+    toast(`✓ Photo de profil de @${profile.instagram} mise à jour (${source}).`, { type: 'ok', timeout: 4000 });
+  } catch (e) {
+    t.dismiss();
+    if (e?.code === 'RATE_LIMITED') {
+      toast(`Quota des relais atteint depuis cet appareil — réessai automatique plus tard (ou via le robot cloud). Tu peux aussi glisser une photo directement sur la fiche.`, { type: 'warn', timeout: 8000 });
+    } else {
+      toast(`@${profile.instagram} : photo introuvable (${e.message}). Compte privé ou inexistant ? Tu peux glisser une photo sur la fiche.`, { type: 'warn', timeout: 8000 });
+    }
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.__fetchMissingProfilePics = fetchMissingProfilePics;
+  window.__igProgress = () => ({ running: igRunning, withoutPic: profilesWithoutPic().length, total: STATE.profiles.length });
 }
 
 async function addImagesToProfile(profile, files) {
@@ -1513,7 +1294,7 @@ function hookBulkDialog() {
     if (newProfiles.length) {
       await bulkSaveProfiles(newProfiles);
       STATE.profiles.push(...newProfiles);
-      for (const np of newProfiles) if (np.instagram) enqueueIgScan(np.id);
+      if (newProfiles.some(np => np.instagram)) processIgPics().catch(() => {});
     }
     $('#bulk-dialog').close();
     ta.value = '';
@@ -1860,7 +1641,7 @@ async function doReset() {
   // Réinitialisation LOCALE uniquement : on vide le journal d'envoi AVANT de
   // vider les données, pour qu'aucune suppression ne parte vers le serveur.
   await setMeta('rt_pending', {});
-  await setMeta(IG_QUEUE_KEY, []);
+  await setMeta(IG_TRIES_KEY, {});
   await clearAllProfilesAndImages();
   STATE.profiles = [];
   STATE.imagesByProfile.clear();
@@ -2246,7 +2027,7 @@ document.addEventListener('click', async (e) => {
     if (updates.instagram && updates.instagram !== prevIgHandle) {
       await deleteProfileImages(lastAiProfile.id);
       STATE.imagesByProfile.delete(lastAiProfile.id);
-      enqueueIgScan(lastAiProfile.id);
+      requestIgPic(lastAiProfile.id);
     }
     buildFilterChips();
     buildProfessionDatalist();

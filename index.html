@@ -92,7 +92,7 @@
     </div>
 
     <div class="topbar__actions">
-      <button class="igbulkbtn" id="ig-bulk-btn" type="button" aria-label="Scanner toutes les photos Instagram manquantes" title="Récupère photo & posts pour tous les profils sans images">
+      <button class="igbulkbtn" id="ig-bulk-btn" type="button" aria-label="Récupérer les photos de profil Instagram manquantes" title="Récupère la photo de profil Instagram des fiches qui n'en ont pas">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="17.2" cy="6.8" r="1.1" fill="currentColor"/></svg>
         <span class="igbulkbtn__label">Scanner photos IG</span>
         <span class="igbulkbtn__count" id="ig-bulk-count" aria-hidden="true"></span>
@@ -215,12 +215,8 @@
     <span>Import multiple Instagram…</span>
   </button>
   <button class="menu__item" data-action="bulk-ig-photos" role="menuitem">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="17.2" cy="6.8" r="1.1" fill="currentColor"/><path d="M5 19l4-3 3 2 5-4 2 1.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity=".7"/></svg>
-    <span>Scan complet IG (photo + 9 posts)</span>
-  </button>
-  <button class="menu__item" data-action="bulk-ig-fast" role="menuitem">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>
-    <span>Mode rapide : photo de profil seule</span>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="17.2" cy="6.8" r="1.1" fill="currentColor"/></svg>
+    <span>Récupérer les photos de profil Instagram manquantes</span>
   </button>
   <button class="menu__item" data-action="copy-emails" role="menuitem">
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3 7l9 6 9-6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/></svg>
@@ -511,10 +507,11 @@
           <span class="settings__badge ok">Actif</span>
         </header>
         <p class="settings__hint">
-          Le bouton <strong>« Scanner photos IG »</strong> récupère la photo de profil et
-          les 9 dernières images publiques via Microlink + DuckDuckGo + Dumpor.
-          <strong>Limite anonyme :</strong> 50 requêtes/jour Microlink — soit ~5 profils/jour.
-          Pour booster, ajoutez une clé Microlink (50 req/jour gratuit avec compte) :
+          Chaque fiche avec un handle Instagram est <strong>illustrée automatiquement</strong>
+          par la photo de profil de ce compte (et seulement elle). L'app essaie depuis cet
+          appareil via des relais publics (unavatar, Microlink — quota journalier par appareil),
+          et le robot cloud complète toutes les 3 h. La photo obtenue apparaît sur tous les appareils.
+          Pour augmenter le quota de cet appareil, ajoutez une clé Microlink (gratuite) :
         </p>
         <ol class="settings__steps">
           <li>Créez un compte gratuit sur <a href="https://microlink.io/" target="_blank" rel="noopener">microlink.io</a></li>
