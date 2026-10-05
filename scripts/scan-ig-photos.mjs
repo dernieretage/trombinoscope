@@ -94,9 +94,34 @@ function cleanHandle(h) {
 }
 
 // Rejette les images génériques / logos (ne jamais stocker "le gros logo")
+// 44884218_345707102882519… = l'avatar gris « compte sans photo » d'Instagram.
 function isGenericUrl(url) {
   if (!url) return true;
-  return /\/rsrc\.php|static\.cdninstagram\.com\/r[\/.]|instagram\.com\/static\//i.test(url);
+  return /\/rsrc\.php|static\.cdninstagram\.com\/r[\/.]|instagram\.com\/static\/|44884218_345707102882519/i.test(url);
+}
+
+// --- Source 2 : page « embed » du profil (instagram.com/{handle}/embed/) ---
+// Conçue pour être intégrée sur des sites tiers, elle est servie SANS compte
+// et contient profile_pic_url (vignette 100×100 signée). Résolution modeste,
+// mais c'est la seule voie publique encore ouverte en anonyme (oct. 2026).
+async function igEmbedPicUrl(handle) {
+  // UA Safari obligatoire : avec un UA Firefox/Chrome-Android, Instagram sert
+  // la coquille complète du site (sans aucune donnée de profil).
+  const res = await fetchT(`https://www.instagram.com/${encodeURIComponent(handle)}/embed/`, {
+    headers: { 'User-Agent': SESSION_UA, 'Accept': 'text/html,*/*', 'Accept-Language': 'en-US,en;q=0.9' },
+  }, 20000);
+  if (!res.ok) throw new HttpError(res.status, `embed ${res.status}`);
+  const html = await res.text();
+  const m = html.match(/profile_pic_url\\?":\\?"(.*?)\\?"/);
+  if (!m) throw new Error('embed : pas de profile_pic_url (compte privé/inexistant ?)');
+  // La valeur est une chaîne JSON elle-même échappée dans une chaîne JS :
+  // on la décode jusqu'à deux fois (\\/ → /, \\u00253D → %3D, etc.).
+  let url = m[1];
+  for (let i = 0; i < 2 && url.includes('\\'); i++) {
+    try { url = JSON.parse('"' + url + '"'); } catch { break; }
+  }
+  if (!/^https:\/\//.test(url) || url.includes('\\') || isGenericUrl(url)) throw new Error('embed : pas de photo exploitable');
+  return url;
 }
 
 // --- Source 1 : API web publique d'Instagram (meilleure qualité, _hd) ---
@@ -136,21 +161,35 @@ async function igApiPicUrl(handle) {
 // jusqu'à 3 fois avec une attente croissante. `state.consec429` compte les 429
 // consécutifs pour le coupe-circuit de main().
 async function resolvePicUrl(handle, state) {
-  const waits = [10000, 25000]; // attentes (jitterées) avant chaque ré-essai
-  for (let attempt = 0; attempt <= waits.length; attempt++) {
-    try {
-      const url = await igApiPicUrl(handle);
-      state.consec429 = 0;
-      return { url, via: 'api' };
-    } catch (e) {
-      if (e.status === 429) {
-        state.consec429++;
-        if (attempt < waits.length) { await sleep(jitter(waits[attempt])); continue; }
+  const errors = [];
+  // Avec session : l'API d'abord (photo HD). Sans session elle répond 401 :
+  // inutile de la solliciter, on passe directement à la page embed.
+  if (IG_SESSION) {
+    const waits = [10000, 25000]; // attentes (jitterées) avant chaque ré-essai
+    for (let attempt = 0; attempt <= waits.length; attempt++) {
+      try {
+        const url = await igApiPicUrl(handle);
+        state.consec429 = 0;
+        return { url, via: 'api' };
+      } catch (e) {
+        if (e.status === 429) {
+          state.consec429++;
+          if (attempt < waits.length) { await sleep(jitter(waits[attempt])); continue; }
+        }
+        errors.push('api : ' + e.message);
+        break;
       }
-      throw e; // non-429 (privé/introuvable) ou 429 épuisé → on passe au suivant
     }
   }
-  throw new Error('inatteignable'); // jamais atteint
+  try {
+    const url = await igEmbedPicUrl(handle);
+    state.consec429 = 0;
+    return { url, via: 'embed' };
+  } catch (e) {
+    if (e.status === 429) state.consec429++;
+    errors.push(e.message);
+  }
+  throw new Error(errors.join(' · '));
 }
 
 async function downloadAsDataUri(picUrl) {
@@ -159,7 +198,7 @@ async function downloadAsDataUri(picUrl) {
   const ct = res.headers.get('content-type') || 'image/jpeg';
   if (!ct.startsWith('image/')) throw new Error(`pas une image (${ct})`);
   const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length < 2000) throw new Error('image trop petite (placeholder ?)');
+  if (buf.length < 1200) throw new Error('image trop petite (placeholder ?)');
   const type = ct.split(';')[0];
   return { dataUri: `data:${type};base64,${buf.toString('base64')}`, type };
 }
@@ -298,4 +337,114 @@ async function main() {
   }
 }
 
-main().catch((e) => { console.error('Erreur robot:', e); process.exit(1); });
+// ============================================================================
+// MODE ESPACE PARTAGÉ (Firestore) — utilisé dès que js/firebase-config.js est
+// renseigné. Le robot lit les profils de l'espace, récupère la photo de ceux
+// qui n'en ont pas, et l'écrit dans l'espace : elle apparaît en direct sur
+// tous les appareils. L'identifiant de l'espace (secret, dérivé du mot de
+// passe) vient de la variable TROMBI_SPACE_ID (Réglages → « Copier
+// l'identifiant pour le robot »).
+// ============================================================================
+
+async function loadAppFirebaseConfig() {
+  try {
+    const { pathToFileURL } = await import('node:url');
+    const m = await import(pathToFileURL(join(process.cwd(), 'js', 'firebase-config.js')).href);
+    const c = m.FIREBASE_CONFIG;
+    if (c && c.apiKey && c.projectId && !/^REMPLACER/.test(c.apiKey)) return c;
+  } catch {}
+  return null;
+}
+
+async function mainSpace(cfg, spaceId) {
+  const { initializeApp } = await import('firebase/app');
+  const { getFirestore, collection, doc, getDocs, setDoc, deleteDoc, runTransaction, query, where } = await import('firebase/firestore');
+  const { getAuth, signInAnonymously } = await import('firebase/auth');
+  const app = initializeApp(cfg);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+  if (cfg.emulator) { // tests locaux contre l'émulateur Firebase
+    const { connectFirestoreEmulator } = await import('firebase/firestore');
+    const { connectAuthEmulator } = await import('firebase/auth');
+    connectFirestoreEmulator(db, cfg.emulator.host || '127.0.0.1', cfg.emulator.firestore || 8080);
+    connectAuthEmulator(auth, `http://${cfg.emulator.host || '127.0.0.1'}:${cfg.emulator.auth || 9099}`, { disableWarnings: true });
+  }
+  await signInAnonymously(auth);
+  const col = (name) => collection(db, 'spaces', spaceId, name);
+  const newVersion = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  console.log(IG_SESSION
+    ? '🔐 Session Instagram chargée (mode authentifié).'
+    : '⚠ AUCUNE session Instagram : depuis fin 2026 l\'API répond 401 en anonyme.');
+  const snap = await getDocs(col('profiles'));
+  const profiles = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => !p.deleted);
+  const forced = new Set(String(process.env.FORCE_HANDLES || '').split(',').map((x) => cleanHandle(x)).filter(Boolean));
+  const candidates = profiles.filter((p) => p.instagram && (forced.has(cleanHandle(p.instagram)) || !Object.keys(p.imgs || {}).length));
+  console.log(`Espace ${spaceId.slice(0, 6)}… — profils : ${profiles.length} | à illustrer : ${candidates.length}${forced.size ? ` (dont ${forced.size} forcé(s))` : ''}`);
+  if (!candidates.length) { console.log('Rien à faire.'); return; }
+
+  const todo = shuffle(candidates).slice(0, MAX_PER_RUN);
+  let added = 0;
+  const state = { consec429: 0 };
+  for (const p of todo) {
+    if (state.consec429 >= MAX_CONSEC_429) {
+      console.log('\n⚠ Instagram limite cette IP GitHub (429 en série) — arrêt anticipé, nouvelle tentative au prochain passage.');
+      break;
+    }
+    const h = cleanHandle(p.instagram);
+    if (!h) continue;
+    try {
+      let dataUri, type, via;
+      if (process.env.ROBOT_TEST_IMAGE) { // test : image locale au lieu d'Instagram
+        const buf = readFileSync(process.env.ROBOT_TEST_IMAGE);
+        type = 'image/jpeg'; dataUri = `data:${type};base64,${buf.toString('base64')}`; via = 'test';
+      } else {
+        const r = await resolvePicUrl(h, state);
+        via = r.via;
+        ({ dataUri, type } = await downloadAsDataUri(r.url));
+      }
+      if (dataUri.length > 900_000) throw new Error('photo trop lourde pour un document');
+      const v = newVersion();
+      await setDoc(doc(db, 'spaces', spaceId, 'images', `${p.id}::0::${v}`), { profileId: p.id, index: 0, type, data: dataUri, v, at: Date.now() });
+      const now = Date.now();
+      const applied = await runTransaction(db, async (tx) => {
+        const ref = doc(db, 'spaces', spaceId, 'profiles', p.id);
+        const cur = await tx.get(ref);
+        if (!cur.exists() || cur.data().deleted) return false;
+        const d = cur.data();
+        // Quelqu'un a mis une photo entre-temps : on ne l'écrase que si re-scan forcé.
+        if (Object.keys(d.imgs || {}).length && !forced.has(h)) return false;
+        tx.set(ref, { ...d, imgs: { 0: v }, _f: { ...(d._f || {}), imgs: now }, updatedAt: new Date(now).toISOString() });
+        return true;
+      });
+      if (!applied) {
+        await deleteDoc(doc(db, 'spaces', spaceId, 'images', `${p.id}::0::${v}`)).catch(() => {});
+        console.log(`  · @${h} (${p.name || ''}) — déjà illustré entre-temps, ignoré`);
+      } else {
+        // Anciennes versions (re-scan forcé) : ménage.
+        const olds = await getDocs(query(col('images'), where('profileId', '==', p.id)));
+        for (const o of olds.docs) if (o.data().v !== v) await deleteDoc(o.ref).catch(() => {});
+        added++;
+        console.log(`  ✓ @${h} (${p.name || ''}) — photo déposée dans l\'espace [${via}]`);
+      }
+    } catch (e) {
+      console.log(`  ✗ @${h} (${p.name || ''}) — ${e.message}`);
+    }
+    await sleep(jitter(DELAY_MS));
+  }
+  console.log(`\n${added} photo(s) ajoutée(s) à l\'espace partagé.`);
+}
+
+(async () => {
+  const cfg = await loadAppFirebaseConfig();
+  if (cfg) {
+    const spaceId = (process.env.TROMBI_SPACE_ID || '').trim();
+    if (!(cfg.emulator ? /^(test-)?[a-f0-9-]{27,64}$/ : /^[a-f0-9]{64}$/).test(spaceId)) {
+      console.log('L\'app utilise l\'espace partagé mais TROMBI_SPACE_ID est absent ou invalide (secret GitHub à renseigner depuis Réglages → « Copier l\'identifiant pour le robot »). Rien à faire.');
+      return;
+    }
+    await mainSpace(cfg, spaceId);
+    process.exit(0); // ferme les connexions Firestore
+  }
+  await main(); // ancien stockage (data/cloud) tant que l'app n'a pas basculé
+})().catch((e) => { console.error('Erreur robot:', e); process.exit(1); });

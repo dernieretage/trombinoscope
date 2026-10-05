@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "exportedAt": "2026-10-04T23:54:49.579Z",
+  "exportedAt": "2026-10-05T11:37:04.080Z",
   "profiles": [
     {
       "id": "p_04mapj63pmp13s54e",
@@ -2039,6 +2039,6 @@
     }
   ],
   "tombstones": [],
-  "imageChunks": 30,
+  "imageChunks": 29,
   "totalImages": 135
 }
