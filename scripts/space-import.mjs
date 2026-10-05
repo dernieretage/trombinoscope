@@ -63,6 +63,15 @@ export function mergeIncoming(existing, inc) {
     if (lines.length) set('notes', cur ? cur + '\n' + lines.join('\n') : lines.join('\n'));
   }
   if (!empty(inc.status) && (empty(existing.status) || existing.status === 'a_contacter') && existing.status !== inc.status) set('status', inc.status);
+  // `arrayOps` : ajouts / retraits ciblés dans une liste (métiers, tags), quel
+  // que soit son contenu actuel — ex. « passe X de Machiniste à Chef machiniste ».
+  for (const [k, ops] of Object.entries(inc.arrayOps || {})) {
+    if (META.has(k)) continue;
+    const rm = new Set((ops.remove || []).map((x) => String(x).toLowerCase()));
+    let list = (next[k] || []).filter((x) => !rm.has(String(x).toLowerCase()));
+    list = unionCI(list, ops.add || []);
+    if (JSON.stringify(list) !== JSON.stringify(next[k] || [])) { next[k] = list; if (!changed.includes(k)) changed.push(k); }
+  }
   // `replace` : champs à REMPLACER explicitement (ex. recatégorisation décidée
   // par l'utilisateur) — seule exception à la règle « on n'écrase jamais ».
   for (const [k, v] of Object.entries(inc.replace || {})) {
