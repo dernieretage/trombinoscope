@@ -63,6 +63,13 @@ export function mergeIncoming(existing, inc) {
     if (lines.length) set('notes', cur ? cur + '\n' + lines.join('\n') : lines.join('\n'));
   }
   if (!empty(inc.status) && (empty(existing.status) || existing.status === 'a_contacter') && existing.status !== inc.status) set('status', inc.status);
+  // `replace` : champs à REMPLACER explicitement (ex. recatégorisation décidée
+  // par l'utilisateur) — seule exception à la règle « on n'écrase jamais ».
+  for (const [k, v] of Object.entries(inc.replace || {})) {
+    if (META.has(k)) continue;
+    const same = Array.isArray(v) ? JSON.stringify((existing[k] || []).map(String)) === JSON.stringify(v.map(String)) : String(existing[k] ?? '') === String(v ?? '');
+    if (!same) { next[k] = v; if (!changed.includes(k)) changed.push(k); }
+  }
   return { next, changed };
 }
 
@@ -96,6 +103,7 @@ export async function importIntoSpace(db, spaceId, existing, incoming, { log = c
         for (const k of ['name', 'professions', 'instagram', 'phone', 'email', 'website', 'location', 'agency', 'rate', 'tags', 'projects', 'notes', 'status', 'bio']) {
           if (!empty(inc[k])) p[k] = k === 'instagram' ? h : inc[k];
         }
+        for (const [k, v] of Object.entries(inc.replace || {})) if (!META.has(k)) p[k] = v;
         const f = {};
         for (const k of Object.keys(p)) if (!META.has(k)) f[k] = now;
         f.imgs = now;

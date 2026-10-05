@@ -1,36 +1,38 @@
 # Fiche Renseignement — liste ordonnée
 
-157 profils retenus · 11 lignes mises de côté (voir fin).
+158 profils retenus · 10 lignes mises de côté (voir fin).
 
 ## Catégories (ce que tu tapes dans la recherche)
 
 | Catégorie | Nb | Intitulés regroupés |
 |---|---|---|
-| **Assistant caméra** | 17 | 1er Assistant Caméra, 1er assistant caméra, 2nd Assistant Caméra, 2nd assistant cam, 2nd assistant caméra, 2nd assistant caméra / action cam, 3e assistant caméra, Assistant cam, Stagiaire caméra |
-| **Régisseur** | 16 | Auxiliaire Régie, Régisseur, Régisseur Adjoint, Régisseur Général, Régisseur auxiliaire, Stagiaire Régisseur |
 | **Assistant décorateur** | 15 | 1er Assistant décorateur, 1ère assistante décoratrice, 2e assistant décorateur, 2eme Assistant Décorateur, Assistant Décorateur, Assistant décorateur, Assistant décoration, Assistante décoratrice, Stagiaire décorateur |
 | **Machiniste** | 15 | Chef Machiniste, Machiniste, Machiniste stagiaire, Stagiaire Machiniste |
 | **Électricien** | 14 | Chef électricien, Stagiaire électricien, Électricien |
+| **Support régie** | 12 | Auxiliaire Régie, Régisseur, Régisseur Adjoint, Régisseur auxiliaire, Stagiaire Régisseur |
+| **Second assistant caméra** | 11 | 2nd Assistant Caméra, 2nd assistant cam, 2nd assistant caméra, 2nd assistant caméra / action cam, 3e assistant caméra, Assistant cam, Stagiaire caméra |
 | **Maquilleur** | 9 | Assistant Maquilleur-Coiffeur, Assistante make-up, Chef Maquilleur-Coiffeur, Make-up artist, Maquilleuse, Renfort Maquilleur-Coiffeur |
-| **Assistant réalisateur** | 7 | 1er Assistant Réalisateur, 1ère assistante réalisatrice, 2e assistant réalisateur, 2nd Assistant Réalisateur, 2nd assistant réalisateur (stagiaire), Coordinateur de production / 2nd assistant réalisateur |
 | **Coiffeur** | 7 | 1er assistant coiffeur, 2nd Assistant Coiffeur, Assistant Maquilleur-Coiffeur, Chef Maquilleur-Coiffeur, Coiffeur, Renfort Maquilleur-Coiffeur |
+| **Second assistant réalisateur** | 7 | 1er Assistant Réalisateur, 1ère assistante réalisatrice, 2e assistant réalisateur, 2nd Assistant Réalisateur, 2nd assistant réalisateur (stagiaire), Coordinateur de production / 2nd assistant réalisateur |
 | **Assistant de production** | 6 | Assistant de production, Assistante de Production, Assistante production - Planning |
 | **Directeur de la photographie** | 5 | Chef Opérateur, Chef opérateur (DOP) |
 | **Opérateur steadicam** | 5 | Steadicam, Steadicamer |
+| **Premier assistant caméra** | 5 | 1er Assistant Caméra, 1er assistant caméra |
 | **Chef décorateur** | 4 | Chef Décorateur, Chef décorateur, Cheffe Décoratrice, Cheffe décoratrice |
 | **Styliste** | 4 | Styliste, Styliste danseurs |
 | **Cadreur** | 3 | Cadreur - Drone, Cadreur / pareur, Cadreuse |
 | **Coordinateur de production** | 3 | Coordinateur de production / 2nd assistant réalisateur, Coordinatrice de production |
 | **Photographe** | 3 | Photographe, Photographe Plateau, Photographe lookbook |
+| **Post-producteur** | 3 | Monteur capsule, Post-producer (Firm) |
+| **Régisseur général** | 3 | Régisseur Général |
+| **Étalonneur** | 3 | Étalonnage |
 | **Assistant photo** | 2 | 2e assistant photo / digit, Assistant photo / lumière / digit |
 | **Assistant styliste** | 2 | Assistante styliste |
 | **Directeur de production** | 2 | Directrice de Production, Directrice de production |
 | **Ingénieur du son** | 2 | Ingénieur du son |
 | **Monteur** | 2 | Monteur, Monteur capsule |
 | **Pilote de drone** | 2 | Cadreur - Drone, Pilote - Drone |
-| **Post-producteur** | 2 | Post-producer (Firm) |
 | **Réalisateur** | 2 | Réalisateur, Réalisateur vidéo |
-| **Étalonneur** | 2 | Étalonnage |
 | **Artificier** | 1 | Rigger / artificier |
 | **Assistant plateau** | 1 | Assistant plateau |
 | **Assistant son** | 1 | Assistant son |
@@ -61,56 +63,34 @@
 | Opale Chloe | Assistant de production | Assistant de production | @opmdl_ | 06 18 43 37 56 | opale.chloe@gmail.com | Ditter |
 | Alice Brassard | Coordinateur de production | Coordinatrice de production | @alice.bchag | 07 50 10 43 63 | alice@frenzyparis.com | JO – Campagne France 2024 |
 | Axelle Badet | Coordinateur de production | Coordinatrice de production | @kly.visual | 06 33 85 32 92 | axelle@frenzypicture.com | JO – Campagne France 2024 |
-| Yann Daoudi | Coordinateur de production + Assistant réalisateur | Coordinateur de production / 2nd assistant réalisateur | @yannadam | 06 49 25 88 79 | yannadam.3958@gmail.com | Ditter |
+| Yann Daoudi | Coordinateur de production + Second assistant réalisateur | Coordinateur de production / 2nd assistant réalisateur | @yannadam | 06 49 25 88 79 | yannadam.3958@gmail.com | Ditter |
 | Charlène Richardeau | Directeur de production | Directrice de production | @charlene.rchrd | 06 45 82 16 36 | charlene.richardeau@gmail.com | JO – Campagne France 2024 |
 | Jade Coutellier Mortreuil | Directeur de production | Directrice de Production | @jadecoutellier | 06 08 71 47 98 | jade.coutelliermortreuil@gmail.com | Yame |
+| Edouard Frommweiler | Post-producteur + Monteur | Auxiliaire Régie, 3e assistant caméra, Monteur capsule | @looneddy | 06 59 10 71 80 | efrommweiler@yahoo.fr | Yame · Ditter · Arthur Ely – Live session |
 | Antoine Olla | Producteur | Producteur | @antoineolla | 06 07 15 20 11 | antoine@incendiefilms.com | « Freaks » (Yseult) |
-| Adrien Gabison | Régisseur | Régisseur auxiliaire | @adrienhtz | 06 62 90 17 23 | adrien.heitz6@gmail.com | Alpinestars RSRV |
-| Arnaud Zen | Régisseur | Régisseur Général | @arnaud.zen | 06 08 70 11 79 |  | Arthur Ely – Live session |
-| Arthur Baschung | Régisseur | Régisseur Général | @arthurbaschung | 06 49 20 54 95 | arthur.prod.tournage@gmail.com | JO – Campagne France 2024 |
-| Baptiste Seysen | Régisseur | Régisseur | @baptiste.seys.regie | 06 43 16 34 01 | baptisteseys2508@icloud.com | Alpinestars RSRV |
-| Bastien Rousseau | Régisseur | Régisseur Général | @regiestar.original | 06 27 74 56 86 | rousseau.bastien@outlook.com | « Freaks » (Yseult) |
-| Candide Berger | Régisseur | Régisseur |  | 06 63 89 91 92 | bergercandide@gmail.com | JO – Campagne France 2024 |
-| Corentin Jamet | Régisseur | Régisseur | @corentjn | 06 58 26 97 25 | corentinjamet22@outlook.fr | Yame |
-| Edouard Frommweiler | Régisseur + Assistant caméra + Monteur | Auxiliaire Régie, 3e assistant caméra, Monteur capsule | @looneddy | 06 59 10 71 80 | efrommweiler@yahoo.fr | Yame · Ditter · Arthur Ely – Live session |
-| Germain Cesena | Régisseur | Stagiaire Régisseur |  | 06 50 08 99 11 | germaincesena@gmail.com | « Freaks » (Yseult) |
-| Jeremy Hollenberg | Régisseur | Régisseur | @jeremholl22 | 07 84 32 72 13 | jeremy.holl@icloud.com | Yame |
-| Lucas Sorbello-Diouf | Régisseur | Régisseur |  | 06 59 46 22 80 | lucas.sorbellodiouf@gmail.com | JO – Campagne France 2024 |
-| Martin Lagniez | Régisseur | Régisseur |  | 06 37 97 97 06 | lagniezmartin@gmail.com | JO – Campagne France 2024 |
-| Max Zaccai | Régisseur | Régisseur | @maxzaccai | 06 48 74 78 68 | zaccaimax91@gmail.com | JO – Campagne France 2024 |
-| Nicolas Duranton | Régisseur | Régisseur | @nico_drtn | 06 84 72 02 06 | nicolas.duranton@foundation-pictures.fr | Ditter |
-| Orane Roncil | Régisseur | Régisseur Adjoint | @roncilorane | 06 33 42 99 91 | oraneroncil@gmail.com | « Freaks » (Yseult) |
-| Samuel Malnati | Régisseur | Régisseur Adjoint |  | 06 88 75 86 57 | samuel.malnati@wanadoo.fr | JO – Campagne France 2024 |
+| Arnaud Zen | Régisseur général | Régisseur Général | @arnaud.zen | 06 08 70 11 79 |  | Arthur Ely – Live session |
+| Arthur Baschung | Régisseur général | Régisseur Général | @arthurbaschung | 06 49 20 54 95 | arthur.prod.tournage@gmail.com | JO – Campagne France 2024 |
+| Bastien Rousseau | Régisseur général | Régisseur Général | @regiestar.original | 06 27 74 56 86 | rousseau.bastien@outlook.com | « Freaks » (Yseult) |
+| Adrien Gabison | Support régie | Régisseur auxiliaire | @adrienhtz | 06 62 90 17 23 | adrien.heitz6@gmail.com | Alpinestars RSRV |
+| Baptiste Seysen | Support régie | Régisseur | @baptiste.seys.regie | 06 43 16 34 01 | baptisteseys2508@icloud.com | Alpinestars RSRV |
+| Candide Berger | Support régie | Régisseur |  | 06 63 89 91 92 | bergercandide@gmail.com | JO – Campagne France 2024 |
+| Corentin Jamet | Support régie | Régisseur | @corentjn | 06 58 26 97 25 | corentinjamet22@outlook.fr | Yame |
+| Germain Cesena | Support régie | Stagiaire Régisseur |  | 06 50 08 99 11 | germaincesena@gmail.com | « Freaks » (Yseult) |
+| Jeremy Hollenberg | Support régie | Régisseur | @jeremholl22 | 07 84 32 72 13 | jeremy.holl@icloud.com | Yame |
+| Lucas Sorbello-Diouf | Support régie | Régisseur |  | 06 59 46 22 80 | lucas.sorbellodiouf@gmail.com | JO – Campagne France 2024 |
+| Martin Lagniez | Support régie | Régisseur |  | 06 37 97 97 06 | lagniezmartin@gmail.com | JO – Campagne France 2024 |
+| Max Zaccai | Support régie | Régisseur | @maxzaccai | 06 48 74 78 68 | zaccaimax91@gmail.com | JO – Campagne France 2024 |
+| Nicolas Duranton | Support régie | Régisseur | @nico_drtn | 06 84 72 02 06 | nicolas.duranton@foundation-pictures.fr | Ditter |
+| Orane Roncil | Support régie | Régisseur Adjoint | @roncilorane | 06 33 42 99 91 | oraneroncil@gmail.com | « Freaks » (Yseult) |
+| Samuel Malnati | Support régie | Régisseur Adjoint |  | 06 88 75 86 57 | samuel.malnati@wanadoo.fr | JO – Campagne France 2024 |
 
 ### Image (46)
 
 | Nom | Catégorie | Poste précis | Instagram | Téléphone | E-mail | Collaboration |
 |---|---|---|---|---|---|---|
-| Adrien Vincendet | Assistant caméra | 2nd Assistant Caméra |  | 07 68 63 75 52 | adrien.vincendet@gmail.com | « Freaks » (Yseult) |
-| Amandine Nolin | Assistant caméra | 1er assistant caméra | @amandine.nolin | 06 37 60 81 47 | nolin.amandine@gmail.com | Yame |
-| Anastasiia Krysko | Assistant caméra | Stagiaire caméra |  | +380 50 164 80 03 | iris-serene@ukr.net | JO – Campagne France 2024 |
-| Anouk Stiegler | Assistant caméra | 1er assistant caméra |  | 07 86 89 24 62 | noukastieg@gmail.com | JO – Campagne France 2024 |
-| Clément Duval | Assistant caméra | 2nd Assistant Caméra |  | 06 61 32 68 40 |  | Arthur Ely – Live session |
-| Elsa Walter Chevalier | Assistant caméra | 2nd assistant cam |  | 06 95 71 08 76 |  | Ben Mazué |
-| Florent Planet | Assistant caméra | 1er Assistant Caméra | @florentplnt | 06 63 64 13 48 | planet-florent@outlook.fr | Rememory |
-| Jeanne Martinet | Assistant caméra | 2nd assistant caméra |  | 07 50 35 72 57 | jeanne.martinet11@gmail.com | JO – Campagne France 2024 |
-| Jules Pandolfi | Assistant caméra | 1er Assistant Caméra |  | 06 67 21 26 13 |  | Arthur Ely – Live session |
-| Léna Leray | Assistant caméra | 1er Assistant Caméra | @lenaleray3 | 06 16 21 59 60 | lenaleray@gmail.com | « Freaks » (Yseult) |
-| Lucas Bardou | Assistant caméra | 3e assistant caméra |  | 06 34 36 06 77 | bardou.lucas@outlook.fr | JO – Campagne France 2024 |
-| Maxime Congi | Assistant caméra | 2nd assistant caméra / action cam |  | 06 66 88 70 73 | maxime.congi@live.fr | JO – Campagne France 2024 |
-| Nolan Joigne | Assistant caméra | Assistant cam | @nolan_jgn | 06 26 32 23 94 | njoigne@gmail.com | Yame |
-| Perrine Boetch | Assistant caméra | 2nd assistant cam | @perrine.boe | 06 80 81 11 50 | perrine.boe@gmail.com | Ditter |
-| Sacha Muleris | Assistant caméra | 2nd Assistant Caméra | @sach_mumu | 06 18 78 40 71 |  | Rememory |
-| Thibault Herby | Assistant caméra | 2nd assistant cam | @thibsherby | 06 41 97 74 61 | herbythibault@gmail.com | Yame |
 | Leopold Radoux | Assistant photo | 2e assistant photo / digit | @leopold.rdx | 07 64 73 20 09 | leopold.radoux@gmail.com | Alpinestars RSRV |
 | Théophile Parat | Assistant photo | Assistant photo / lumière / digit | @_lorpheric | 06 52 92 61 39 | p4rat@hotmail.fr | Alpinestars RSRV |
 | Clément Schürch | Assistant plateau | Assistant plateau | @c_schurch | 07 77 89 63 03 |  | Alpinestars RSRV |
-| Ambre Rambaud | Assistant réalisateur | 1er Assistant Réalisateur | @ambrerambaud | 06 37 91 18 84 | ambre.rambaud@gmail.com | Yame |
-| Aurore Taddei | Assistant réalisateur | 1er Assistant Réalisateur | @roro.tata | 06 99 94 39 97 | aurore.taddei@gmail.com | « Freaks » (Yseult) |
-| Clémentine Houée | Assistant réalisateur | 2nd assistant réalisateur (stagiaire) |  | 07 61 41 77 83 |  | Arthur Ely – Live session |
-| Elsa Leviant | Assistant réalisateur | 2nd Assistant Réalisateur | @elsaleviant | 06 88 11 57 22 | leviant.elsa@gmail.com | « Freaks » (Yseult) |
-| Lola Zaluski | Assistant réalisateur | 2e assistant réalisateur | @lolazalus | 07 67 94 80 73 | lol.zaluski@gmail.com | Yame |
-| Marie Vaillant | Assistant réalisateur | 1ère assistante réalisatrice | @marievaillantt | 06 87 78 12 91 |  | Rememory |
 | Eddy Martin | Cadreur | Cadreur / pareur | @eddymartin.opv | 06 65 12 30 09 |  | Ditter |
 | Katia Hamnane | Cadreur | Cadreuse | @katiahamnane | 06 69 46 68 39 | katia.hamnane@gmail.com | Yame |
 | Loïc Borne | Cadreur + Pilote de drone | Cadreur - Drone |  | 06 84 32 68 09 | loicborne.pro@gmail.com | JO – Campagne France 2024 |
@@ -129,9 +109,31 @@
 | Orysia Murat | Photographe | Photographe Plateau | @orysia_photo | 07 83 70 24 26 | murat.orysia@gmail.com | « Freaks » (Yseult) |
 | Renaud Labelle | Photographe | Photographe lookbook | @renaud.labelle | 06 76 52 66 72 | info@renaudlabelle.com | Alpinestars RSRV |
 | Pablo Sotes | Pilote de drone | Pilote - Drone |  | 06 95 96 10 14 | sotespablo@gmail.com | JO – Campagne France 2024 |
+| Edouard Frommweiler | Post-producteur + Monteur | Auxiliaire Régie, 3e assistant caméra, Monteur capsule | @looneddy | 06 59 10 71 80 | efrommweiler@yahoo.fr | Yame · Ditter · Arthur Ely – Live session |
+| Amandine Nolin | Premier assistant caméra | 1er assistant caméra | @amandine.nolin | 06 37 60 81 47 | nolin.amandine@gmail.com | Yame |
+| Anouk Stiegler | Premier assistant caméra | 1er assistant caméra |  | 07 86 89 24 62 | noukastieg@gmail.com | JO – Campagne France 2024 |
+| Florent Planet | Premier assistant caméra | 1er Assistant Caméra | @florentplnt | 06 63 64 13 48 | planet-florent@outlook.fr | Rememory |
+| Jules Pandolfi | Premier assistant caméra | 1er Assistant Caméra |  | 06 67 21 26 13 |  | Arthur Ely – Live session |
+| Léna Leray | Premier assistant caméra | 1er Assistant Caméra | @lenaleray3 | 06 16 21 59 60 | lenaleray@gmail.com | « Freaks » (Yseult) |
 | Cyril Gaborit | Réalisateur | Réalisateur vidéo | @cyril.gaborit | 06 52 74 80 72 | cyril@hulk-post.com | Alpinestars RSRV |
 | Maru Kuleshova | Réalisateur | Réalisateur | @mgevobo | +7 953 091-54-62 | mgevobo@gmail.com | Rememory |
-| Edouard Frommweiler | Régisseur + Assistant caméra + Monteur | Auxiliaire Régie, 3e assistant caméra, Monteur capsule | @looneddy | 06 59 10 71 80 | efrommweiler@yahoo.fr | Yame · Ditter · Arthur Ely – Live session |
+| Adrien Vincendet | Second assistant caméra | 2nd Assistant Caméra |  | 07 68 63 75 52 | adrien.vincendet@gmail.com | « Freaks » (Yseult) |
+| Anastasiia Krysko | Second assistant caméra | Stagiaire caméra |  | +380 50 164 80 03 | iris-serene@ukr.net | JO – Campagne France 2024 |
+| Clément Duval | Second assistant caméra | 2nd Assistant Caméra |  | 06 61 32 68 40 |  | Arthur Ely – Live session |
+| Elsa Walter Chevalier | Second assistant caméra | 2nd assistant cam |  | 06 95 71 08 76 |  | Ben Mazué |
+| Jeanne Martinet | Second assistant caméra | 2nd assistant caméra |  | 07 50 35 72 57 | jeanne.martinet11@gmail.com | JO – Campagne France 2024 |
+| Lucas Bardou | Second assistant caméra | 3e assistant caméra |  | 06 34 36 06 77 | bardou.lucas@outlook.fr | JO – Campagne France 2024 |
+| Maxime Congi | Second assistant caméra | 2nd assistant caméra / action cam |  | 06 66 88 70 73 | maxime.congi@live.fr | JO – Campagne France 2024 |
+| Nolan Joigne | Second assistant caméra | Assistant cam | @nolan_jgn | 06 26 32 23 94 | njoigne@gmail.com | Yame |
+| Perrine Boetch | Second assistant caméra | 2nd assistant cam | @perrine.boe | 06 80 81 11 50 | perrine.boe@gmail.com | Ditter |
+| Sacha Muleris | Second assistant caméra | 2nd Assistant Caméra | @sach_mumu | 06 18 78 40 71 |  | Rememory |
+| Thibault Herby | Second assistant caméra | 2nd assistant cam | @thibsherby | 06 41 97 74 61 | herbythibault@gmail.com | Yame |
+| Ambre Rambaud | Second assistant réalisateur | 1er Assistant Réalisateur | @ambrerambaud | 06 37 91 18 84 | ambre.rambaud@gmail.com | Yame |
+| Aurore Taddei | Second assistant réalisateur | 1er Assistant Réalisateur | @roro.tata | 06 99 94 39 97 | aurore.taddei@gmail.com | « Freaks » (Yseult) |
+| Clémentine Houée | Second assistant réalisateur | 2nd assistant réalisateur (stagiaire) |  | 07 61 41 77 83 |  | Arthur Ely – Live session |
+| Elsa Leviant | Second assistant réalisateur | 2nd Assistant Réalisateur | @elsaleviant | 06 88 11 57 22 | leviant.elsa@gmail.com | « Freaks » (Yseult) |
+| Lola Zaluski | Second assistant réalisateur | 2e assistant réalisateur | @lolazalus | 07 67 94 80 73 | lol.zaluski@gmail.com | Yame |
+| Marie Vaillant | Second assistant réalisateur | 1ère assistante réalisatrice | @marievaillantt | 06 87 78 12 91 |  | Rememory |
 
 ### Machinerie-Élec (31)
 
@@ -228,7 +230,7 @@
 | Shirley Dom | Styliste | Styliste danseurs |  | 06 42 36 00 76 | shirleydom@gmail.com | « Freaks » (Yseult) |
 | Sina Braetz | Styliste | Styliste | @sinabraetz | +49 176 324 600 25 | contact@sinabraetz.com | Alpinestars RSRV |
 
-### Post-prod (10)
+### Post-prod (11)
 
 | Nom | Catégorie | Poste précis | Instagram | Téléphone | E-mail | Collaboration |
 |---|---|---|---|---|---|---|
@@ -237,11 +239,30 @@
 | Maxime Pozzi-Garcia | Monteur | Monteur | @maximepozzigarcia |  |  | Ziak |
 | Charlotte Brisebarre | Post-producteur | Post-producer (Firm) |  | 06 60 77 30 83 | charlotte@firm-studio.fr | JO – Campagne France 2024 |
 | Clémence Ripoche | Post-producteur | Post-producer (Firm) |  | 06 48 48 33 81 | clemence@firm-studio.fr | JO – Campagne France 2024 |
+| Edouard Frommweiler | Post-producteur + Monteur | Auxiliaire Régie, 3e assistant caméra, Monteur capsule | @looneddy | 06 59 10 71 80 | efrommweiler@yahoo.fr | Yame · Ditter · Arthur Ely – Live session |
 | Sonia Hammel | Retoucheur | Retoucheur photo (Janvier) |  | 06 66 06 54 75 | sonia@janvier.fr | JO – Campagne France 2024 |
-| Edouard Frommweiler | Régisseur + Assistant caméra + Monteur | Auxiliaire Régie, 3e assistant caméra, Monteur capsule | @looneddy | 06 59 10 71 80 | efrommweiler@yahoo.fr | Yame · Ditter · Arthur Ely – Live session |
 | Matteo Richard-Ena | VFX Artist | VFX | @ffmpeg_video |  |  | Ziak |
 | Florian Martiny | Étalonneur | Étalonnage | @florian_martiny |  |  | Rememory |
+| Salman Laudier | Étalonneur | Étalonnage | @salmanlaudier | 06 65 10 59 25 |  | Arthur Ely – Live session |
 | Vincent Amor | Étalonneur | Étalonnage | @made_with_amor |  |  | Ziak |
+
+## Étalonneurs ajoutés le 5 oct. (liste de Jonathan)
+
+| Nom | Instagram | Contact | Site / agence |
+|---|---|---|---|
+| Tim Smith | **non trouvé** | +44 20 3870 3600 · hello@rascalstudio.com | Rascal (Londres) |
+| John Alexander Lowe | @johnlowe.xyz | hello@johnalexanderlowe.xyz | https://johnalexanderlowe.xyz |
+| Dante Pasquinelli | @dantepasquinelli | dante@ethos.studio | Ethos Studio |
+| Mikey Pehanich | @mikeypackage | alexandra@royalmuster.com | Royal Muster (agent : Alexandra) |
+| Vincent Amor | @made_with_amor | 06 51 29 97 48 · carlota@upgrade.paris | https://upgrade.paris/vincent-amor-colorist · Upgrade Paris — Carlota Xavier (talent agent) |
+| Arthur Paux | @arthurpaux | 06 03 21 17 91 · adelia.booking@gmail.com | Agent : Adelia Cailleux |
+| Mathieu Caplanne | @mathieucaplanne | 06 03 21 17 91 · adelia.booking@gmail.com | Agent : Adelia Cailleux |
+| Myles Bevan | @m.y.l.e.s | emily@commonwealthreps.com | https://modernpost.com · Commonwealth Reps (Emily) / Modern Post |
+| Mikey Rossiter | **non trouvé** | production@raremedium.tv | https://raremedium.tv/mikey-rossiter/ · Rare Medium |
+| Alice Colomer | @colomer.alice | alicecolor.contact@gmail.com | https://www.coloralice.com |
+| Marina Starke | @marinastarke.color | production@okaystudio.co.uk | https://www.marinastarke.com/ · Okay Studio (UK) — production@okaystudio.co.uk |
+| Julien Alary | @julien.alary | eli@tmls.tv | https://www.tmls.tv/colourist/julien-alary/all · TMLS (Eli) |
+| Jonny Thorpe | @jonnythorpe | hitusup@makemake.com | https://makemake.com/color/work · MakeMake |
 
 ## Mis de côté (doute) — à toi de voir
 
@@ -253,7 +274,6 @@
 | Opérateur son | Datson |  |  |  | « Freaks » (Yseult) | aucune coordonnée |
 | Assistant Décorateur | Hugo DESCOMBES |  |  |  | « Freaks » (Yseult) | aucune coordonnée |
 | Monteur live | Ambre | 06 83 68 24 69 |  |  | Arthur Ely – Live session | prénom seul, numéro différent d'Ambre Rambaud |
-| Etalo | Salman | 06 65 10 59 25 |  |  | Arthur Ely – Live session | prénom seul, aucun autre élément |
 | Post production | HULK |  |  |  | Alpinestars RSRV | société, aucune coordonnée |
 | Monteur | Maxime Caro |  |  |  | JO – Campagne France 2024 | aucune coordonnée |
 | Studio de Post Production | DLP Paris |  |  | @dlp_paris_bkk | Ziak | société (studio), pas une personne |
@@ -269,3 +289,4 @@
 - **Ketsia Kombe** — Numéro incomplet dans la fiche (076447792).
 - **Opale Chloe** — E-mail noté « opale.chloé@gmail.com » dans la fiche (accent retiré).
 - **Noé Pasquier** — E-mail absent (la fiche indique « Nom »).
+- **Salman Laudier** — Nom complet et Instagram (@salmanlaudier) fournis par Jonathan.
