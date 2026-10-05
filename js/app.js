@@ -1847,6 +1847,15 @@ function hookSettingsDialog() {
 
   $('#cloud-diagnose-btn').addEventListener('click', () => doDiagnoseSync());
 
+  // Identifiant de l'espace (secret dérivé du mot de passe) : à mettre dans le
+  // secret GitHub TROMBI_SPACE_ID pour que le robot photos écrive dans l'espace.
+  $('#cloud-copy-space')?.addEventListener('click', async () => {
+    const id = await getSpaceId();
+    if (!id) { toast('Appareil verrouillé — entre d\'abord le mot de passe.', { type: 'warn' }); return; }
+    const ok = await safeCopy(id);
+    toast(ok ? 'Identifiant copié. Colle-le dans le secret GitHub « TROMBI_SPACE_ID » (dépôt → Settings → Secrets → Actions).' : 'Copie impossible — ouvre le Diagnostic pour le lire.', { type: ok ? 'ok' : 'warn', timeout: 7000 });
+  });
+
   $('#cloud-lock-btn').addEventListener('click', async () => {
     const ok = await confirmDialog({
       title: 'Verrouiller cet appareil ?',

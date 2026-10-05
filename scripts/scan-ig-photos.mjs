@@ -298,4 +298,114 @@ async function main() {
   }
 }
 
-main().catch((e) => { console.error('Erreur robot:', e); process.exit(1); });
+// ============================================================================
+// MODE ESPACE PARTAGÉ (Firestore) — utilisé dès que js/firebase-config.js est
+// renseigné. Le robot lit les profils de l'espace, récupère la photo de ceux
+// qui n'en ont pas, et l'écrit dans l'espace : elle apparaît en direct sur
+// tous les appareils. L'identifiant de l'espace (secret, dérivé du mot de
+// passe) vient de la variable TROMBI_SPACE_ID (Réglages → « Copier
+// l'identifiant pour le robot »).
+// ============================================================================
+
+async function loadAppFirebaseConfig() {
+  try {
+    const { pathToFileURL } = await import('node:url');
+    const m = await import(pathToFileURL(join(process.cwd(), 'js', 'firebase-config.js')).href);
+    const c = m.FIREBASE_CONFIG;
+    if (c && c.apiKey && c.projectId && !/^REMPLACER/.test(c.apiKey)) return c;
+  } catch {}
+  return null;
+}
+
+async function mainSpace(cfg, spaceId) {
+  const { initializeApp } = await import('firebase/app');
+  const { getFirestore, collection, doc, getDocs, setDoc, deleteDoc, runTransaction, query, where } = await import('firebase/firestore');
+  const { getAuth, signInAnonymously } = await import('firebase/auth');
+  const app = initializeApp(cfg);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+  if (cfg.emulator) { // tests locaux contre l'émulateur Firebase
+    const { connectFirestoreEmulator } = await import('firebase/firestore');
+    const { connectAuthEmulator } = await import('firebase/auth');
+    connectFirestoreEmulator(db, cfg.emulator.host || '127.0.0.1', cfg.emulator.firestore || 8080);
+    connectAuthEmulator(auth, `http://${cfg.emulator.host || '127.0.0.1'}:${cfg.emulator.auth || 9099}`, { disableWarnings: true });
+  }
+  await signInAnonymously(auth);
+  const col = (name) => collection(db, 'spaces', spaceId, name);
+  const newVersion = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  console.log(IG_SESSION
+    ? '🔐 Session Instagram chargée (mode authentifié).'
+    : '⚠ AUCUNE session Instagram : depuis fin 2026 l\'API répond 401 en anonyme.');
+  const snap = await getDocs(col('profiles'));
+  const profiles = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => !p.deleted);
+  const forced = new Set(String(process.env.FORCE_HANDLES || '').split(',').map((x) => cleanHandle(x)).filter(Boolean));
+  const candidates = profiles.filter((p) => p.instagram && (forced.has(cleanHandle(p.instagram)) || !Object.keys(p.imgs || {}).length));
+  console.log(`Espace ${spaceId.slice(0, 6)}… — profils : ${profiles.length} | à illustrer : ${candidates.length}${forced.size ? ` (dont ${forced.size} forcé(s))` : ''}`);
+  if (!candidates.length) { console.log('Rien à faire.'); return; }
+
+  const todo = shuffle(candidates).slice(0, MAX_PER_RUN);
+  let added = 0;
+  const state = { consec429: 0 };
+  for (const p of todo) {
+    if (state.consec429 >= MAX_CONSEC_429) {
+      console.log('\n⚠ Instagram limite cette IP GitHub (429 en série) — arrêt anticipé, nouvelle tentative au prochain passage.');
+      break;
+    }
+    const h = cleanHandle(p.instagram);
+    if (!h) continue;
+    try {
+      let dataUri, type, via;
+      if (process.env.ROBOT_TEST_IMAGE) { // test : image locale au lieu d'Instagram
+        const buf = readFileSync(process.env.ROBOT_TEST_IMAGE);
+        type = 'image/jpeg'; dataUri = `data:${type};base64,${buf.toString('base64')}`; via = 'test';
+      } else {
+        const r = await resolvePicUrl(h, state);
+        via = r.via;
+        ({ dataUri, type } = await downloadAsDataUri(r.url));
+      }
+      if (dataUri.length > 900_000) throw new Error('photo trop lourde pour un document');
+      const v = newVersion();
+      await setDoc(doc(db, 'spaces', spaceId, 'images', `${p.id}::0::${v}`), { profileId: p.id, index: 0, type, data: dataUri, v });
+      const now = Date.now();
+      const applied = await runTransaction(db, async (tx) => {
+        const ref = doc(db, 'spaces', spaceId, 'profiles', p.id);
+        const cur = await tx.get(ref);
+        if (!cur.exists() || cur.data().deleted) return false;
+        const d = cur.data();
+        // Quelqu'un a mis une photo entre-temps : on ne l'écrase que si re-scan forcé.
+        if (Object.keys(d.imgs || {}).length && !forced.has(h)) return false;
+        tx.set(ref, { ...d, imgs: { 0: v }, _f: { ...(d._f || {}), imgs: now }, updatedAt: new Date(now).toISOString() });
+        return true;
+      });
+      if (!applied) {
+        await deleteDoc(doc(db, 'spaces', spaceId, 'images', `${p.id}::0::${v}`)).catch(() => {});
+        console.log(`  · @${h} (${p.name || ''}) — déjà illustré entre-temps, ignoré`);
+      } else {
+        // Anciennes versions (re-scan forcé) : ménage.
+        const olds = await getDocs(query(col('images'), where('profileId', '==', p.id)));
+        for (const o of olds.docs) if (o.data().v !== v) await deleteDoc(o.ref).catch(() => {});
+        added++;
+        console.log(`  ✓ @${h} (${p.name || ''}) — photo déposée dans l\'espace [${via}]`);
+      }
+    } catch (e) {
+      console.log(`  ✗ @${h} (${p.name || ''}) — ${e.message}`);
+    }
+    await sleep(jitter(DELAY_MS));
+  }
+  console.log(`\n${added} photo(s) ajoutée(s) à l\'espace partagé.`);
+}
+
+(async () => {
+  const cfg = await loadAppFirebaseConfig();
+  if (cfg) {
+    const spaceId = (process.env.TROMBI_SPACE_ID || '').trim();
+    if (!(cfg.emulator ? /^(test-)?[a-f0-9-]{27,64}$/ : /^[a-f0-9]{64}$/).test(spaceId)) {
+      console.log('L\'app utilise l\'espace partagé mais TROMBI_SPACE_ID est absent ou invalide (secret GitHub à renseigner depuis Réglages → « Copier l\'identifiant pour le robot »). Rien à faire.');
+      return;
+    }
+    await mainSpace(cfg, spaceId);
+    process.exit(0); // ferme les connexions Firestore
+  }
+  await main(); // ancien stockage (data/cloud) tant que l'app n'a pas basculé
+})().catch((e) => { console.error('Erreur robot:', e); process.exit(1); });
