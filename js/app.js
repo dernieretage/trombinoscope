@@ -825,6 +825,10 @@ async function openProfileDialog(id) {
     onFetchIg: async () => {
       await refetchProfilePic(profile);
     },
+    onProfession: (pro) => {
+      dlg.close();
+      showProfession(pro);
+    },
     onAiScan: async () => {
       await aiScanProfile(profile);
     },
@@ -2118,6 +2122,21 @@ function renderTagBar() {
   } else {
     bar.hidden = true;
   }
+}
+
+/** Affiche tous les profils d'un métier (depuis une fiche) : filtre + retour en haut. */
+function showProfession(pro) {
+  if (!pro) return;
+  STATE.filters = { ...STATE.filters, profession: pro, status: '', query: '', tag: '' };
+  $('#search-input').value = '';
+  $('#search-clear').hidden = true;
+  setMeta('profession', pro);
+  buildFilterChips();
+  buildStatusFilters();
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  const n = STATE.filtered.length;
+  toast(`${n} profil${n > 1 ? 's' : ''} « ${pro} »`, { type: 'info', timeout: 2500 });
 }
 
 function setTagFilter(tag) {
