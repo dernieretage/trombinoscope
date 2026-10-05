@@ -799,6 +799,12 @@ body.is-drag-global::after {
   transition: transform 4s var(--ease);
 }
 .card:hover .card__avatar { transform: scale(1.06); }
+/* Vignette basse résolution : flou doux proportionnel à l'agrandissement
+   (posé par applyAvatar), légèrement zoomée pour cacher les bords flous. */
+.card__avatar.is-lowres, .profile__cover.is-lowres {
+  filter: blur(var(--lowres-blur, 1.4px)) saturate(1.04);
+  scale: 1.06;
+}
 .card__shade {
   position: absolute; inset: 0;
   background: linear-gradient(180deg, transparent 50%, rgba(0,0,0,.55) 100%);
