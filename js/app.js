@@ -7,7 +7,7 @@ import {
 } from './store.js';
 import { SEED_PROFILES, PROFESSIONS, STATUSES } from './seed.js';
 import {
-  $, $$, debounce, downscaleImage, fmtBytes, fuzzyMatch,
+  $, $$, debounce, downscaleImage, fmtBytes, fuzzyMatch, normalizeForSearch,
   parseInstagramHandle, guessNameFromHandle, isTypingContext,
   objectURLFor, revokeObjectURL,
 } from './utils.js';
@@ -384,6 +384,19 @@ function hookUI() {
   }, 220);
   input.addEventListener('input', onQuery);
   clear.addEventListener('click', () => { input.value = ''; STATE.filters.query = ''; clear.hidden = true; render(); input.focus(); });
+  // Entrée dans la recherche : si un métier correspond, on y va directement.
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const first = matchProfessions(input.value)[0];
+    if (!first) return;
+    e.preventDefault();
+    showProfession(first.pro);
+    input.blur();
+  });
+  $('#pro-suggest')?.addEventListener('click', (e) => {
+    const b = e.target.closest('.pro-suggest__chip');
+    if (b) showProfession(b.dataset.profession);
+  });
 
   // theme toggle
   $('#theme-toggle').addEventListener('click', () => {
@@ -743,6 +756,7 @@ function _renderImpl() {
 
   renderStats(list);
   renderTagBar();
+  renderProSuggest();
 
   // empty state
   if (!list.length) {
@@ -2122,6 +2136,64 @@ function renderTagBar() {
   } else {
     bar.hidden = true;
   }
+}
+
+// ============= RECHERCHE → MÉTIER =============
+// Quand la recherche ressemble à un métier (nom, abréviation ou jargon de
+// plateau), on propose directement la catégorie : un clic (ou Entrée) affiche
+// TOUT le monde de ce métier — sans dépendre de ce que les tags contiennent.
+const PRO_ALIASES = [
+  [/^(ar|1er ar|2nd ar|ass\.? ?r[ée]al|assistant r[ée]al)/, ['Assistant réalisateur', 'Second assistant réalisateur']],
+  [/^(ac|1er ac|2nd ac|ass\.? ?cam|assistant cam)/, ['Premier assistant caméra', 'Second assistant caméra']],
+  [/^(chef ?op|dop|dp|directeur photo|direction photo)/, ['Directeur de la photographie']],
+  [/^(elec|élec|electro|électro|electricien|électricien)/, ['Électro', 'Chef électro']],
+  [/^(machino|machiniste)/, ['Machiniste', 'Chef machiniste']],
+  [/^(regie|régie|regisseur|régisseur)/, ['Régisseur général', 'Support régie']],
+  [/^(montage|monteur|monteuse)/, ['Monteur']],
+  [/^(etalo|étalo|colorist|color|grading)/, ['Étalonneur']],
+  [/^(maquill|mua|make ?up)/, ['Maquilleur']],
+  [/^(coiff|hair)/, ['Coiffeur']],
+  [/^(deco|déco)/, ['Chef décorateur', 'Assistant décorateur', 'Décorateur·rice']],
+  [/^(son|ingé|inge|sound)/, ['Ingénieur du son', 'Assistant son', 'Mixeur son']],
+  [/^(photo)/, ['Photographe', 'Assistant photo']],
+  [/^(real|réal|realisat|réalisat|filmmaker)/, ['Réalisateur']],
+  [/^(prod)/, ['Producteur', 'Directeur de production', 'Coordinateur de production', 'Assistant de production', 'Post-producteur']],
+  [/^(steadi)/, ['Opérateur steadicam']],
+  [/^(drone)/, ['Pilote de drone', 'Cadreur']],
+  [/^(styl)/, ['Styliste', 'Assistant styliste']],
+  [/^(da|dir\.? ?art|direction artistique)/, ['Directeur artistique']],
+  [/^(costum)/, ['Costumier', 'Modiste']],
+  [/^(vfx|effets)/, ['VFX Artist']],
+  [/^(rigg|artific)/, ['Rigger', 'Artificier']],
+  [/^(chapeau|modiste)/, ['Modiste']],
+];
+
+function matchProfessions(query) {
+  const nq = normalizeForSearch(query).trim();
+  if (nq.length < 2) return [];
+  const counts = professionCounts();
+  const out = new Set();
+  for (const pro of Object.keys(counts)) if (normalizeForSearch(pro).includes(nq)) out.add(pro);
+  for (const [re, pros] of PRO_ALIASES) if (re.test(nq)) for (const p of pros) if (counts[p]) out.add(p);
+  return [...out].sort((x, y) => counts[y] - counts[x] || x.localeCompare(y, 'fr')).map((pro) => ({ pro, n: counts[pro] }));
+}
+
+function renderProSuggest() {
+  const bar = $('#pro-suggest');
+  if (!bar) return;
+  const list = STATE.filters.query ? matchProfessions(STATE.filters.query).slice(0, 6) : [];
+  bar.querySelectorAll('.pro-suggest__chip').forEach((b) => b.remove());
+  if (!list.length) { bar.hidden = true; return; }
+  for (const { pro, n } of list) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'tag-bar__chip pro-suggest__chip';
+    b.dataset.profession = pro;
+    b.innerHTML = `${escapeHtmlBasic(pro)} <span class="pro-suggest__count">${n}</span>`;
+    b.title = `Voir les ${n} profil${n > 1 ? 's' : ''} « ${pro} »`;
+    bar.appendChild(b);
+  }
+  bar.hidden = false;
 }
 
 /** Affiche tous les profils d'un métier (depuis une fiche) : filtre + retour en haut. */

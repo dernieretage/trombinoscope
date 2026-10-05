@@ -801,6 +801,12 @@ body.is-drag-global::after {
 .card:hover .card__avatar { transform: scale(1.06); }
 /* Vignette basse résolution : flou doux proportionnel à l'agrandissement
    (posé par applyAvatar), légèrement zoomée pour cacher les bords flous. */
+/* Suggestions de métier sous la recherche */
+.pro-suggest { flex-wrap: wrap; }
+.pro-suggest__chip { cursor: pointer; font: inherit; transition: background .15s var(--ease), color .15s var(--ease); }
+.pro-suggest__chip:hover, .pro-suggest__chip:focus-visible { background: var(--accent); color: #fff; outline: none; }
+.pro-suggest__chip:hover .pro-suggest__count { background: rgba(255,255,255,.25); color: #fff; }
+.pro-suggest__count { margin-left: 6px; padding: 1px 6px; border-radius: var(--r-pill); background: var(--bg-elev-2); color: var(--text-muted); font-size: 11px; }
 /* Métier cliquable dans la fiche → tous les profils de ce métier */
 .tag--link { cursor: pointer; font: inherit; transition: background .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease); }
 .tag--link:hover, .tag--link:focus-visible { background: var(--accent); color: #fff; border-color: var(--accent); outline: none; }

@@ -422,6 +422,32 @@ async function mainSpace(cfg, spaceId) {
     let incoming = [];
     try { incoming = JSON.parse(readFileSync(importFile, 'utf8')).profiles || []; }
     catch (e) { console.log('Fichier d\'import illisible :', e.message); }
+    // Renommage global de métiers ({ "Ancien": "Nouveau" }) sur TOUTES les fiches
+    // de l'espace, doublons retirés, horodatage du champ.
+    let renames = {};
+    try { renames = JSON.parse(readFileSync(importFile, 'utf8')).renameProfessions || {}; } catch {}
+    if (Object.keys(renames).length) {
+      const { runTransaction } = await import('firebase/firestore');
+      const lower = Object.fromEntries(Object.entries(renames).map(([a, b]) => [a.toLowerCase(), b]));
+      let n = 0;
+      for (const p of profiles) {
+        const cur = p.professions || [];
+        const next = [...new Set(cur.map((x) => lower[String(x).toLowerCase()] ?? x))];
+        if (JSON.stringify(next) === JSON.stringify(cur)) continue;
+        await runTransaction(db, async (tx) => {
+          const ref = doc(db, 'spaces', spaceId, 'profiles', p.id);
+          const snap = await tx.get(ref);
+          if (!snap.exists() || snap.data().deleted) return;
+          const d = snap.data();
+          const now = Date.now();
+          const fresh = [...new Set((d.professions || []).map((x) => lower[String(x).toLowerCase()] ?? x))];
+          tx.set(ref, { ...d, professions: fresh, _f: { ...(d._f || {}), professions: now }, updatedAt: new Date(now).toISOString() });
+        });
+        n++;
+        console.log(`  ↻ ${p.name} : ${cur.join(' / ')} → ${next.join(' / ')}`);
+      }
+      console.log(`Métiers renommés sur ${n} fiche(s).`);
+    }
     if (incoming.length) {
       const { importIntoSpace } = await import(pathToFileURL(join(process.cwd(), 'scripts', 'space-import.mjs')).href);
       console.log(`Import de ${incoming.length} profil(s) depuis data/robot-import.json…`);
