@@ -104,14 +104,17 @@ function isGenericUrl(url) {
 // Conçue pour être intégrée sur des sites tiers, elle est servie SANS compte
 // et contient profile_pic_url (vignette 100×100 signée). Résolution modeste,
 // mais c'est la seule voie publique encore ouverte en anonyme (oct. 2026).
-async function igEmbedPicUrl(handle) {
+async function fetchEmbedPage(handle) {
   // UA Safari obligatoire : avec un UA Firefox/Chrome-Android, Instagram sert
   // la coquille complète du site (sans aucune donnée de profil).
   const res = await fetchT(`https://www.instagram.com/${encodeURIComponent(handle)}/embed/`, {
     headers: { 'User-Agent': SESSION_UA, 'Accept': 'text/html,*/*', 'Accept-Language': 'en-US,en;q=0.9' },
   }, 20000);
   if (!res.ok) throw new HttpError(res.status, `embed ${res.status}`);
-  const html = await res.text();
+  return res.text();
+}
+
+function igEmbedPicUrl(html) {
   const m = html.match(/profile_pic_url\\?":\\?"(.*?)\\?"/);
   if (!m) throw new Error('embed : pas de profile_pic_url (compte privé/inexistant ?)');
   // La valeur est une chaîne JSON elle-même échappée dans une chaîne JS :
@@ -121,6 +124,24 @@ async function igEmbedPicUrl(handle) {
     try { url = JSON.parse('"' + url + '"'); } catch { break; }
   }
   if (!/^https:\/\//.test(url) || url.includes('\\') || isGenericUrl(url)) throw new Error('embed : pas de photo exploitable');
+  return url;
+}
+
+// --- Source 3 : point d'accès « app mobile » (i.instagram.com) ---
+// Avec l'identifiant numérique du compte (lu dans la page embed) et un UA de
+// l'application Instagram, il répond encore en anonyme et donne une vignette
+// 150×150 (au lieu de 100×100), parfois la version HD. On vérifie que le
+// compte renvoyé est bien le handle demandé (jamais la photo de quelqu'un d'autre).
+const APP_UA = 'Instagram 275.0.0.27.98 Android (33/13; 420dpi; 1080x2400; samsung; SM-G991B; o1s; exynos2100; en_US; 458229258)';
+async function igAppInfoPicUrl(handle, html) {
+  const m = html.match(/owner\\?":\{\\?"id\\?":\\?"(\d+)/);
+  if (!m) throw new Error('info : identifiant introuvable');
+  const res = await fetchT(`https://i.instagram.com/api/v1/users/${m[1]}/info/`, { headers: { 'User-Agent': APP_UA, 'Accept': '*/*' } }, 20000);
+  if (!res.ok) throw new HttpError(res.status, `info ${res.status}`);
+  const u = (await res.json())?.user;
+  if (!u || String(u.username || '').toLowerCase() !== handle) throw new Error('info : compte différent');
+  const url = (u.hd_profile_pic_url_info && u.hd_profile_pic_url_info.url) || u.profile_pic_url;
+  if (!url || isGenericUrl(url)) throw new Error('info : pas de photo exploitable');
   return url;
 }
 
@@ -181,14 +202,14 @@ async function resolvePicUrl(handle, state) {
       }
     }
   }
-  try {
-    const url = await igEmbedPicUrl(handle);
-    state.consec429 = 0;
-    return { url, via: 'embed' };
-  } catch (e) {
-    if (e.status === 429) state.consec429++;
-    errors.push(e.message);
-  }
+  let html;
+  try { html = await fetchEmbedPage(handle); }
+  catch (e) { if (e.status === 429) state.consec429++; errors.push(e.message); throw new Error(errors.join(' · ')); }
+  // D'abord la meilleure résolution anonyme (150×150 / HD), sinon la vignette embed (100×100).
+  try { const url = await igAppInfoPicUrl(handle, html); state.consec429 = 0; return { url, via: 'info' }; }
+  catch (e) { errors.push(e.message); }
+  try { const url = igEmbedPicUrl(html); state.consec429 = 0; return { url, via: 'embed' }; }
+  catch (e) { errors.push(e.message); }
   throw new Error(errors.join(' · '));
 }
 
