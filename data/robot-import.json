@@ -1,0 +1,582 @@
+{
+ "version": 1,
+ "source": "Mise à jour 2 — catégories AR/AC/régie, Salman Laudier, étalonneurs",
+ "profiles": [
+  {
+   "name": "Bastien Rousseau",
+   "instagram": "regiestar.original",
+   "replace": {
+    "professions": [
+     "Régisseur général"
+    ]
+   }
+  },
+  {
+   "name": "Germain Cesena",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Support régie"
+    ]
+   }
+  },
+  {
+   "name": "Orane Roncil",
+   "instagram": "roncilorane",
+   "replace": {
+    "professions": [
+     "Support régie"
+    ]
+   }
+  },
+  {
+   "name": "Adrien Gabison",
+   "instagram": "adrienhtz",
+   "replace": {
+    "professions": [
+     "Support régie"
+    ]
+   }
+  },
+  {
+   "name": "Baptiste Seysen",
+   "instagram": "baptiste.seys.regie",
+   "replace": {
+    "professions": [
+     "Support régie"
+    ]
+   }
+  },
+  {
+   "name": "Arnaud Zen",
+   "instagram": "arnaud.zen",
+   "replace": {
+    "professions": [
+     "Régisseur général"
+    ]
+   }
+  },
+  {
+   "name": "Nicolas Duranton",
+   "instagram": "nico_drtn",
+   "replace": {
+    "professions": [
+     "Support régie"
+    ]
+   }
+  },
+  {
+   "name": "Yann Daoudi",
+   "instagram": "yannadam",
+   "replace": {
+    "professions": [
+     "Coordinateur de production",
+     "Second assistant réalisateur"
+    ]
+   }
+  },
+  {
+   "name": "Arthur Baschung",
+   "instagram": "arthurbaschung",
+   "replace": {
+    "professions": [
+     "Régisseur général"
+    ]
+   }
+  },
+  {
+   "name": "Candide Berger",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Support régie"
+    ]
+   }
+  },
+  {
+   "name": "Lucas Sorbello-Diouf",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Support régie"
+    ]
+   }
+  },
+  {
+   "name": "Martin Lagniez",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Support régie"
+    ]
+   }
+  },
+  {
+   "name": "Max Zaccai",
+   "instagram": "maxzaccai",
+   "replace": {
+    "professions": [
+     "Support régie"
+    ]
+   }
+  },
+  {
+   "name": "Samuel Malnati",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Support régie"
+    ]
+   }
+  },
+  {
+   "name": "Corentin Jamet",
+   "instagram": "corentjn",
+   "replace": {
+    "professions": [
+     "Support régie"
+    ]
+   }
+  },
+  {
+   "name": "Edouard Frommweiler",
+   "instagram": "looneddy",
+   "replace": {
+    "professions": [
+     "Post-producteur",
+     "Monteur"
+    ],
+    "tags": [
+     "Monteur capsule",
+     "Post-prod"
+    ]
+   }
+  },
+  {
+   "name": "Jeremy Hollenberg",
+   "instagram": "jeremholl22",
+   "replace": {
+    "professions": [
+     "Support régie"
+    ]
+   }
+  },
+  {
+   "name": "Adrien Vincendet",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Second assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Amandine Nolin",
+   "instagram": "amandine.nolin",
+   "replace": {
+    "professions": [
+     "Premier assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Ambre Rambaud",
+   "instagram": "ambrerambaud",
+   "replace": {
+    "professions": [
+     "Second assistant réalisateur"
+    ]
+   }
+  },
+  {
+   "name": "Anastasiia Krysko",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Second assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Anouk Stiegler",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Premier assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Aurore Taddei",
+   "instagram": "roro.tata",
+   "replace": {
+    "professions": [
+     "Second assistant réalisateur"
+    ]
+   }
+  },
+  {
+   "name": "Clément Duval",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Second assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Clémentine Houée",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Second assistant réalisateur"
+    ]
+   }
+  },
+  {
+   "name": "Elsa Leviant",
+   "instagram": "elsaleviant",
+   "replace": {
+    "professions": [
+     "Second assistant réalisateur"
+    ]
+   }
+  },
+  {
+   "name": "Elsa Walter Chevalier",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Second assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Florent Planet",
+   "instagram": "florentplnt",
+   "replace": {
+    "professions": [
+     "Premier assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Jeanne Martinet",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Second assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Jules Pandolfi",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Premier assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Léna Leray",
+   "instagram": "lenaleray3",
+   "replace": {
+    "professions": [
+     "Premier assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Lola Zaluski",
+   "instagram": "lolazalus",
+   "replace": {
+    "professions": [
+     "Second assistant réalisateur"
+    ]
+   }
+  },
+  {
+   "name": "Lucas Bardou",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Second assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Marie Vaillant",
+   "instagram": "marievaillantt",
+   "replace": {
+    "professions": [
+     "Second assistant réalisateur"
+    ]
+   }
+  },
+  {
+   "name": "Maxime Congi",
+   "instagram": "",
+   "replace": {
+    "professions": [
+     "Second assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Nolan Joigne",
+   "instagram": "nolan_jgn",
+   "replace": {
+    "professions": [
+     "Second assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Perrine Boetch",
+   "instagram": "perrine.boe",
+   "replace": {
+    "professions": [
+     "Second assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Sacha Muleris",
+   "instagram": "sach_mumu",
+   "replace": {
+    "professions": [
+     "Second assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Thibault Herby",
+   "instagram": "thibsherby",
+   "replace": {
+    "professions": [
+     "Second assistant caméra"
+    ]
+   }
+  },
+  {
+   "name": "Salman Laudier",
+   "professions": [
+    "Étalonneur"
+   ],
+   "instagram": "salmanlaudier",
+   "phone": "06 65 10 59 25",
+   "tags": [
+    "Étalonnage",
+    "Post-prod"
+   ],
+   "projects": "Arthur Ely – Live session",
+   "status": "collabore",
+   "notes": "Dernière collaboration : Arthur Ely – Live session"
+  },
+  {
+   "professions": [
+    "Étalonneur"
+   ],
+   "tags": [
+    "Étalonnage",
+    "Post-prod"
+   ],
+   "status": "a_contacter",
+   "name": "Tim Smith",
+   "email": "hello@rascalstudio.com",
+   "phone": "+44 20 3870 3600",
+   "agency": "Rascal (Londres)",
+   "location": "Londres",
+   "notes": "Senior colourist chez Rascal (Londres). Compte Instagram non trouvé."
+  },
+  {
+   "professions": [
+    "Étalonneur"
+   ],
+   "tags": [
+    "Étalonnage",
+    "Post-prod"
+   ],
+   "status": "a_contacter",
+   "name": "John Alexander Lowe",
+   "email": "hello@johnalexanderlowe.xyz",
+   "website": "https://johnalexanderlowe.xyz",
+   "instagram": "johnlowe.xyz",
+   "notes": "Contact perso."
+  },
+  {
+   "professions": [
+    "Étalonneur"
+   ],
+   "tags": [
+    "Étalonnage",
+    "Post-prod"
+   ],
+   "status": "a_contacter",
+   "name": "Dante Pasquinelli",
+   "email": "dante@ethos.studio",
+   "instagram": "dantepasquinelli",
+   "agency": "Ethos Studio",
+   "notes": "Contact perso. Partner & senior colorist, Ethos Studio."
+  },
+  {
+   "professions": [
+    "Étalonneur"
+   ],
+   "tags": [
+    "Étalonnage",
+    "Post-prod"
+   ],
+   "status": "a_contacter",
+   "name": "Mikey Pehanich",
+   "email": "alexandra@royalmuster.com",
+   "instagram": "mikeypackage",
+   "agency": "Royal Muster (agent : Alexandra)",
+   "notes": "Contact via agent (Alexandra, Royal Muster). Senior colourist, The Mill."
+  },
+  {
+   "professions": [
+    "Étalonneur"
+   ],
+   "tags": [
+    "Étalonnage",
+    "Post-prod"
+   ],
+   "status": "a_contacter",
+   "name": "Vincent Amor",
+   "website": "https://upgrade.paris/vincent-amor-colorist",
+   "phone": "06 51 29 97 48",
+   "email": "carlota@upgrade.paris",
+   "agency": "Upgrade Paris — Carlota Xavier (talent agent)",
+   "instagram": "made_with_amor",
+   "notes": "Contact via agent : Carlota Xavier (Upgrade Paris), 06 51 29 97 48, carlota@upgrade.paris."
+  },
+  {
+   "professions": [
+    "Étalonneur"
+   ],
+   "tags": [
+    "Étalonnage",
+    "Post-prod"
+   ],
+   "status": "a_contacter",
+   "name": "Arthur Paux",
+   "phone": "06 03 21 17 91",
+   "email": "adelia.booking@gmail.com",
+   "agency": "Agent : Adelia Cailleux",
+   "instagram": "arthurpaux",
+   "notes": "Contact via agent : Adelia Cailleux, 06 03 21 17 91, adelia.booking@gmail.com."
+  },
+  {
+   "professions": [
+    "Étalonneur"
+   ],
+   "tags": [
+    "Étalonnage",
+    "Post-prod"
+   ],
+   "status": "a_contacter",
+   "name": "Mathieu Caplanne",
+   "phone": "06 03 21 17 91",
+   "email": "adelia.booking@gmail.com",
+   "agency": "Agent : Adelia Cailleux",
+   "instagram": "mathieucaplanne",
+   "notes": "Contact via agent : Adelia Cailleux, 06 03 21 17 91, adelia.booking@gmail.com."
+  },
+  {
+   "professions": [
+    "Étalonneur"
+   ],
+   "tags": [
+    "Étalonnage",
+    "Post-prod"
+   ],
+   "status": "a_contacter",
+   "name": "Myles Bevan",
+   "instagram": "m.y.l.e.s",
+   "website": "https://modernpost.com",
+   "email": "emily@commonwealthreps.com",
+   "agency": "Commonwealth Reps (Emily) / Modern Post",
+   "notes": "Contact via reps : Emily (Commonwealth Reps)."
+  },
+  {
+   "professions": [
+    "Étalonneur"
+   ],
+   "tags": [
+    "Étalonnage",
+    "Post-prod"
+   ],
+   "status": "a_contacter",
+   "name": "Mikey Rossiter",
+   "website": "https://raremedium.tv/mikey-rossiter/",
+   "email": "production@raremedium.tv",
+   "agency": "Rare Medium",
+   "notes": "Contact via Rare Medium (production@raremedium.tv). Instagram du studio : @raremedium.tv ; compte perso non confirmé."
+  },
+  {
+   "professions": [
+    "Étalonneur"
+   ],
+   "tags": [
+    "Étalonnage",
+    "Post-prod"
+   ],
+   "status": "a_contacter",
+   "name": "Alice Colomer",
+   "website": "https://www.coloralice.com",
+   "email": "alicecolor.contact@gmail.com",
+   "instagram": "colomer.alice"
+  },
+  {
+   "professions": [
+    "Étalonneur"
+   ],
+   "tags": [
+    "Étalonnage",
+    "Post-prod"
+   ],
+   "status": "a_contacter",
+   "name": "Marina Starke",
+   "website": "https://www.marinastarke.com/",
+   "email": "production@okaystudio.co.uk",
+   "agency": "Okay Studio (UK) — production@okaystudio.co.uk",
+   "instagram": "marinastarke.color",
+   "location": "Berlin",
+   "notes": "Contact via Okay Studio (UK) ; représentée aux US par Ethos Studio."
+  },
+  {
+   "professions": [
+    "Étalonneur"
+   ],
+   "tags": [
+    "Étalonnage",
+    "Post-prod"
+   ],
+   "status": "a_contacter",
+   "name": "Julien Alary",
+   "website": "https://www.tmls.tv/colourist/julien-alary/all",
+   "email": "eli@tmls.tv",
+   "agency": "TMLS (Eli)",
+   "instagram": "julien.alary",
+   "notes": "Contact via TMLS (eli@tmls.tv)."
+  },
+  {
+   "professions": [
+    "Étalonneur"
+   ],
+   "tags": [
+    "Étalonnage",
+    "Post-prod"
+   ],
+   "status": "a_contacter",
+   "name": "Jonny Thorpe",
+   "website": "https://makemake.com/color/work",
+   "email": "hitusup@makemake.com",
+   "agency": "MakeMake",
+   "instagram": "jonnythorpe",
+   "notes": "Contact via MakeMake (hitusup@makemake.com)."
+  }
+ ]
+}
