@@ -4,11 +4,11 @@
 
 | | |
 |---|---|
-| **En ligne (gh-pages)** | app **v66** (inchangée) + **données mises à jour** : 86/87 profils ont leur photo Instagram (commit `bddb63e`) |
-| **Prête, non déployée (main)** | app **v67** : synchronisation temps réel Firestore (commits `0d5b63c` → `fcc2b83`) |
-| **Blocage** | v67 a besoin d'un projet Firebase (gratuit, 10 min, à faire par toi — étapes ci-dessous) |
+| **En ligne (gh-pages `e757435`, 5 oct. 14h15)** | app **v67** : synchronisation temps réel Firestore (projet `trombinoscope-90cf7`, créé par l'utilisateur) + 86/87 profils avec photo Instagram |
+| **main** | `7874f72` (identique au code déployé) |
+| **Vérifié en réel** | auth anonyme 620 ms, écriture 340 ms, lecture 130 ms, règles refusent tout accès hors espace ; site chargé sans erreur, SW v67 actif, porte mot de passe affichée |
 
-Production n'a pas été touchée côté code : la v66 reste en ligne avec son ancien mécanisme. Seules les **données** (photos) ont été publiées.
+Mise à jour : la section 3 ci-dessous (bascule) a été exécutée le matin même ; il ne reste que le secret du robot (optionnel).
 
 ---
 
