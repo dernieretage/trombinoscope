@@ -425,6 +425,7 @@ async function processSnapshot(snap) {
     await applyRemote(id, data);
   }
   if (connected && !firstServerSyncDone) {
+    if (snap.size === 0) await importLegacyCloud(); // espace vide : premier appareil → on part de l'ancien cloud
     firstServerSyncDone = true;
     await reconcileAll();
     notifyChanged();
@@ -434,6 +435,51 @@ async function processSnapshot(snap) {
     await reconcileAll();
   }
   if (wasConnected !== connected || !wasConnected) emitStatus();
+}
+
+/**
+ * Migration depuis l'ancien système (data/cloud/ sur le site, lecture seule) :
+ * exécutée UNE fois, par le premier appareil qui trouve l'espace vide. On
+ * complète le local (profils absents, photos des profils qui n'en ont pas)
+ * sans jamais écraser une donnée locale plus récente ; reconcileAll() envoie
+ * ensuite le tout. Ainsi la bascule ne dépend pas de l'appareil qui démarre
+ * en premier ni de la fraîcheur de sa copie locale.
+ */
+async function importLegacyCloud() {
+  try {
+    const base = new URL('./data/cloud/', location.href).href;
+    const res = await fetch(base + 'trombinoscope.json', { cache: 'no-store' });
+    if (!res.ok) return;
+    const manifest = await res.json();
+    const profiles = (manifest.profiles || []).filter((p) => p && p.id);
+    if (!profiles.length) return;
+    let added = 0, imgs = 0;
+    for (const lp of profiles) {
+      const local = await getProfile(lp.id);
+      const m = mergeProfiles(local, { ...lp, deleted: false });
+      if (m.deleted || !m.result) continue;
+      if (!local || m.localChanged) { await putProfileRaw(m.result); if (!local) added++; }
+    }
+    const needImgs = new Set();
+    for (const lp of profiles) if (!(await getProfileImages(lp.id)).length) needImgs.add(lp.id);
+    for (let i = 1; i <= (manifest.imageChunks || 0) && needImgs.size; i++) {
+      let chunk;
+      try { chunk = await (await fetch(base + `trombinoscope-images-${String(i).padStart(3, '0')}.json`, { cache: 'no-store' })).json(); }
+      catch { continue; }
+      for (const im of chunk.images || []) {
+        if (!needImgs.has(im.profileId) || im.key !== `${im.profileId}::${im.index}`) continue;
+        try {
+          const blob = await base64ToBlob(im.data, im.type);
+          await putImageRaw({ key: im.key, profileId: im.profileId, index: im.index, blob, type: im.type || blob.type, size: blob.size, addedAt: Date.now() });
+          imgs++;
+        } catch {}
+      }
+    }
+    console.log(`[RT] migration : ${added} profil(s) et ${imgs} photo(s) repris de l'ancien cloud`);
+    if (added || imgs) notifyChanged();
+  } catch (e) {
+    console.warn('[RT] migration ancien cloud ignorée :', e?.message);
+  }
 }
 
 /**
