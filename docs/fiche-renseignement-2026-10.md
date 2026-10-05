@@ -6,8 +6,8 @@
 
 | Catégorie | Nb | Intitulés regroupés |
 |---|---|---|
-| **Assistant caméra** | 17 | 1er Assistant Caméra, 1er assistant caméra, 2nd Assistant Caméra, 2nd assistant cam, 2nd assistant caméra, 2nd assistant caméra / action cam, 3e assistant caméra, Assistant cam, Auxiliaire Régie, Monteur capsule, Stagiaire caméra |
-| **Régisseur** | 16 | 3e assistant caméra, Auxiliaire Régie, Monteur capsule, Régisseur, Régisseur Adjoint, Régisseur Général, Régisseur auxiliaire, Stagiaire Régisseur |
+| **Assistant caméra** | 17 | 1er Assistant Caméra, 1er assistant caméra, 2nd Assistant Caméra, 2nd assistant cam, 2nd assistant caméra, 2nd assistant caméra / action cam, 3e assistant caméra, Assistant cam, Stagiaire caméra |
+| **Régisseur** | 16 | Auxiliaire Régie, Régisseur, Régisseur Adjoint, Régisseur Général, Régisseur auxiliaire, Stagiaire Régisseur |
 | **Assistant décorateur** | 15 | 1er Assistant décorateur, 1ère assistante décoratrice, 2e assistant décorateur, 2eme Assistant Décorateur, Assistant Décorateur, Assistant décorateur, Assistant décoration, Assistante décoratrice, Stagiaire décorateur |
 | **Machiniste** | 15 | Chef Machiniste, Machiniste, Machiniste stagiaire, Stagiaire Machiniste |
 | **Électricien** | 14 | Chef électricien, Stagiaire électricien, Électricien |
@@ -26,7 +26,7 @@
 | **Assistant styliste** | 2 | Assistante styliste |
 | **Directeur de production** | 2 | Directrice de Production, Directrice de production |
 | **Ingénieur du son** | 2 | Ingénieur du son |
-| **Monteur** | 2 | 3e assistant caméra, Auxiliaire Régie, Monteur, Monteur capsule |
+| **Monteur** | 2 | Monteur, Monteur capsule |
 | **Pilote de drone** | 2 | Cadreur - Drone, Pilote - Drone |
 | **Post-producteur** | 2 | Post-producer (Firm) |
 | **Réalisateur** | 2 | Réalisateur, Réalisateur vidéo |
