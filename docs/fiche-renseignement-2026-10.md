@@ -250,7 +250,7 @@
 
 | Nom | Instagram | Contact | Site / agence |
 |---|---|---|---|
-| Tim Smith | **non trouvé** | +44 20 3870 3600 · hello@rascalstudio.com | Rascal (Londres) |
+| Tim Smith | @timotheous | +44 20 3870 3600 · hello@rascalstudio.com | Rascal (Londres) |
 | John Alexander Lowe | @johnlowe.xyz | hello@johnalexanderlowe.xyz | https://johnalexanderlowe.xyz |
 | Dante Pasquinelli | @dantepasquinelli | dante@ethos.studio | Ethos Studio |
 | Mikey Pehanich | @mikeypackage | alexandra@royalmuster.com | Royal Muster (agent : Alexandra) |
@@ -258,7 +258,7 @@
 | Arthur Paux | @arthurpaux | 06 03 21 17 91 · adelia.booking@gmail.com | Agent : Adelia Cailleux |
 | Mathieu Caplanne | @mathieucaplanne | 06 03 21 17 91 · adelia.booking@gmail.com | Agent : Adelia Cailleux |
 | Myles Bevan | @m.y.l.e.s | emily@commonwealthreps.com | https://modernpost.com · Commonwealth Reps (Emily) / Modern Post |
-| Mikey Rossiter | **non trouvé** | production@raremedium.tv | https://raremedium.tv/mikey-rossiter/ · Rare Medium |
+| Mikey Rossiter | @mikolour | production@raremedium.tv | https://raremedium.tv/mikey-rossiter/ · Rare Medium |
 | Alice Colomer | @colomer.alice | alicecolor.contact@gmail.com | https://www.coloralice.com |
 | Marina Starke | @marinastarke.color | production@okaystudio.co.uk | https://www.marinastarke.com/ · Okay Studio (UK) — production@okaystudio.co.uk |
 | Julien Alary | @julien.alary | eli@tmls.tv | https://www.tmls.tv/colourist/julien-alary/all · TMLS (Eli) |
