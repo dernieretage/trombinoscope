@@ -47,6 +47,7 @@ const pickUA = () => UAS[Math.floor(Math.random() * UAS.length)];
 // local ~/Library/Application Support/trombinoscope/ig-session.txt
 // (format : la ligne Cookie complète, au minimum « sessionid=…; csrftoken=… »).
 import { homedir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { existsSync } from 'node:fs';
 function loadIgSession() {
   let raw = (process.env.IG_SESSION || '').trim();
@@ -221,7 +222,19 @@ async function downloadAsDataUri(picUrl) {
   const buf = Buffer.from(await res.arrayBuffer());
   if (buf.length < 1200) throw new Error('image trop petite (placeholder ?)');
   const type = ct.split(';')[0];
-  return { dataUri: `data:${type};base64,${buf.toString('base64')}`, type };
+  return { dataUri: `data:${type};base64,${buf.toString('base64')}`, type, buf };
+}
+
+// Agrandit ×4 par IA les vignettes (< 400 px) — voir scripts/upscale.mjs.
+let upscaler = null;
+async function enhance(buf, type) {
+  if (process.env.NO_UPSCALE) return { dataUri: `data:${type};base64,${buf.toString('base64')}`, type, width: 0, upscaled: false };
+  if (!upscaler) {
+    try { upscaler = await import(pathToFileURL(join(process.cwd(), 'scripts', 'upscale.mjs')).href); }
+    catch (e) { upscaler = { upscaleIfSmall: async (b, t) => ({ buffer: b, type: t, width: 0, upscaled: false, reason: e.message }) }; }
+  }
+  const r = await upscaler.upscaleIfSmall(buf, type);
+  return { dataUri: `data:${r.type};base64,${r.buffer.toString('base64')}`, type: r.type, width: r.width, upscaled: r.upscaled, reason: r.reason };
 }
 
 // Recharge tous les records d'images depuis les chunks existants.
@@ -368,12 +381,15 @@ async function main() {
 // ============================================================================
 
 async function loadAppFirebaseConfig() {
+  // Lecture textuelle (pas d'import ESM) : sans package.json « type: module »
+  // dans le checkout, Node refuserait l'import d'un .js avec `export`.
   try {
-    const { pathToFileURL } = await import('node:url');
-    const m = await import(pathToFileURL(join(process.cwd(), 'js', 'firebase-config.js')).href);
-    const c = m.FIREBASE_CONFIG;
+    const src = readFileSync(join(process.cwd(), 'js', 'firebase-config.js'), 'utf8');
+    const m = src.match(/FIREBASE_CONFIG\s*=\s*(\{[\s\S]*?\n\});/);
+    if (!m) return null;
+    const c = new Function('return (' + m[1] + ');')();
     if (c && c.apiKey && c.projectId && !/^REMPLACER/.test(c.apiKey)) return c;
-  } catch {}
+  } catch (e) { console.log('Config Firebase illisible :', e.message); }
   return null;
 }
 
@@ -399,7 +415,11 @@ async function mainSpace(cfg, spaceId) {
     : '⚠ AUCUNE session Instagram : depuis fin 2026 l\'API répond 401 en anonyme.');
   const snap = await getDocs(col('profiles'));
   const profiles = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => !p.deleted);
-  const forced = new Set(String(process.env.FORCE_HANDLES || '').split(',').map((x) => cleanHandle(x)).filter(Boolean));
+  // Handles à re-traiter : variable FORCE_HANDLES et/ou fichier
+  // data/robot-force-handles.txt (un handle par ligne, vidé après traitement).
+  const forceFile = join(process.cwd(), 'data', 'robot-force-handles.txt');
+  const fromFile = existsSync(forceFile) ? readFileSync(forceFile, 'utf8').split(/\r?\n/) : [];
+  const forced = new Set([...String(process.env.FORCE_HANDLES || '').split(','), ...fromFile].map((x) => cleanHandle(x)).filter(Boolean));
   const candidates = profiles.filter((p) => p.instagram && (forced.has(cleanHandle(p.instagram)) || !Object.keys(p.imgs || {}).length));
   console.log(`Espace ${spaceId.slice(0, 6)}… — profils : ${profiles.length} | à illustrer : ${candidates.length}${forced.size ? ` (dont ${forced.size} forcé(s))` : ''}`);
   if (!candidates.length) { console.log('Rien à faire.'); return; }
@@ -415,18 +435,22 @@ async function mainSpace(cfg, spaceId) {
     const h = cleanHandle(p.instagram);
     if (!h) continue;
     try {
-      let dataUri, type, via;
+      let buf, type, via;
       if (process.env.ROBOT_TEST_IMAGE) { // test : image locale au lieu d'Instagram
-        const buf = readFileSync(process.env.ROBOT_TEST_IMAGE);
-        type = 'image/jpeg'; dataUri = `data:${type};base64,${buf.toString('base64')}`; via = 'test';
+        buf = readFileSync(process.env.ROBOT_TEST_IMAGE); type = 'image/jpeg'; via = 'test';
       } else {
         const r = await resolvePicUrl(h, state);
         via = r.via;
-        ({ dataUri, type } = await downloadAsDataUri(r.url));
+        ({ buf, type } = await downloadAsDataUri(r.url));
       }
+      const e = await enhance(buf, type);
+      if (e.upscaled) via += ` → IA ×4 (${e.width} px)`;
+      else if (e.reason) via += ` (IA indisponible : ${e.reason})`;
+      const { dataUri } = e;
+      type = e.type;
       if (dataUri.length > 900_000) throw new Error('photo trop lourde pour un document');
       const v = newVersion();
-      await setDoc(doc(db, 'spaces', spaceId, 'images', `${p.id}::0::${v}`), { profileId: p.id, index: 0, type, data: dataUri, v, at: Date.now() });
+      await setDoc(doc(db, 'spaces', spaceId, 'images', `${p.id}::0::${v}`), { profileId: p.id, index: 0, type, data: dataUri, v, at: Date.now(), w: e.width || null });
       const now = Date.now();
       const applied = await runTransaction(db, async (tx) => {
         const ref = doc(db, 'spaces', spaceId, 'profiles', p.id);
@@ -454,6 +478,11 @@ async function mainSpace(cfg, spaceId) {
     await sleep(jitter(DELAY_MS));
   }
   console.log(`\n${added} photo(s) ajoutée(s) à l\'espace partagé.`);
+  if (fromFile.some((x) => cleanHandle(x))) {
+    const left = fromFile.map(cleanHandle).filter((h) => h && !todo.some((p) => cleanHandle(p.instagram) === h));
+    writeFileSync(forceFile, left.join('\n') + (left.length ? '\n' : ''));
+    console.log(left.length ? `${left.length} handle(s) forcé(s) restant(s) pour le prochain passage.` : 'Liste des handles forcés vidée.');
+  }
 }
 
 (async () => {
